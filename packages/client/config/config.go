@@ -1,0 +1,88 @@
+package config
+
+import (
+	"time"
+)
+
+// Config holds the configuration for the Aivis Cloud client
+type Config struct {
+	// APIKey is the authentication key for Aivis Cloud API
+	APIKey string
+
+	// BaseURL is the base URL for Aivis Cloud API
+	BaseURL string
+
+	// HTTPTimeout is the timeout for HTTP requests
+	HTTPTimeout time.Duration
+
+	// UserAgent is the user agent string to send with requests
+	UserAgent string
+	
+	// DefaultPlaybackMode sets the default playback mode for audio
+	DefaultPlaybackMode string
+}
+
+// DefaultConfig returns a default configuration
+func DefaultConfig() *Config {
+	return &Config{
+		BaseURL:             "https://api.aivis-project.com",
+		HTTPTimeout:         60 * time.Second,
+		UserAgent:           "aiviscloud-go-client/1.0.0",
+		DefaultPlaybackMode: "immediate",
+	}
+}
+
+// NewConfig creates a new configuration with the provided API key
+func NewConfig(apiKey string) *Config {
+	config := DefaultConfig()
+	config.APIKey = apiKey
+	return config
+}
+
+// WithBaseURL sets a custom base URL
+func (c *Config) WithBaseURL(baseURL string) *Config {
+	c.BaseURL = baseURL
+	return c
+}
+
+// WithTimeout sets a custom HTTP timeout
+func (c *Config) WithTimeout(timeout time.Duration) *Config {
+	c.HTTPTimeout = timeout
+	return c
+}
+
+// WithUserAgent sets a custom user agent
+func (c *Config) WithUserAgent(userAgent string) *Config {
+	c.UserAgent = userAgent
+	return c
+}
+
+// WithDefaultPlaybackMode sets the default playback mode
+func (c *Config) WithDefaultPlaybackMode(mode string) *Config {
+	c.DefaultPlaybackMode = mode
+	return c
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	if c.APIKey == "" {
+		return &ValidationError{Field: "APIKey", Message: "API key is required"}
+	}
+	if c.BaseURL == "" {
+		return &ValidationError{Field: "BaseURL", Message: "Base URL is required"}
+	}
+	if c.HTTPTimeout <= 0 {
+		return &ValidationError{Field: "HTTPTimeout", Message: "HTTP timeout must be positive"}
+	}
+	return nil
+}
+
+// ValidationError represents a configuration validation error
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Field + ": " + e.Message
+}

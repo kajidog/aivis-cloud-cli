@@ -1,0 +1,55 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go build for binaries
+aivis-cli
+packages/cli/aivis-cli
+
+# Go modules
+go.sum
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Local configuration files
+.env
+*.local
+.aivis-cli.yaml
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Coverage
+*.cover
+*.out
+
+# Dependencies
+vendor/
+
+# Build artifacts
+dist/
+build/
