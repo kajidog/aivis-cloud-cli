@@ -1,6 +1,9 @@
 package config
 
 import (
+	"io"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -20,6 +23,15 @@ type Config struct {
 	
 	// DefaultPlaybackMode sets the default playback mode for audio
 	DefaultPlaybackMode string
+	
+	// LogLevel sets the logging level (DEBUG, INFO, WARN, ERROR)
+	LogLevel string
+	
+	// LogOutput sets the log output destination (stdout, stderr, or file path)
+	LogOutput string
+	
+	// LogFormat sets the log output format (text, json)
+	LogFormat string
 }
 
 // DefaultConfig returns a default configuration
@@ -29,6 +41,9 @@ func DefaultConfig() *Config {
 		HTTPTimeout:         60 * time.Second,
 		UserAgent:           "aiviscloud-go-client/1.0.0",
 		DefaultPlaybackMode: "immediate",
+		LogLevel:            "INFO",
+		LogOutput:           "stdout",
+		LogFormat:           "text",
 	}
 }
 
@@ -61,6 +76,41 @@ func (c *Config) WithUserAgent(userAgent string) *Config {
 func (c *Config) WithDefaultPlaybackMode(mode string) *Config {
 	c.DefaultPlaybackMode = mode
 	return c
+}
+
+// WithLogLevel sets the logging level
+func (c *Config) WithLogLevel(level string) *Config {
+	c.LogLevel = level
+	return c
+}
+
+// WithLogOutput sets the log output destination
+func (c *Config) WithLogOutput(output string) *Config {
+	c.LogOutput = output
+	return c
+}
+
+// WithLogFormat sets the log output format
+func (c *Config) WithLogFormat(format string) *Config {
+	c.LogFormat = format
+	return c
+}
+
+// GetLogWriter returns the appropriate writer for log output
+func (c *Config) GetLogWriter() (io.Writer, error) {
+	switch strings.ToLower(c.LogOutput) {
+	case "stdout":
+		return os.Stdout, nil
+	case "stderr":
+		return os.Stderr, nil
+	default:
+		// Assume it's a file path
+		file, err := os.OpenFile(c.LogOutput, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return nil, err
+		}
+		return file, nil
+	}
 }
 
 // Validate checks if the configuration is valid

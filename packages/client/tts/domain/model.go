@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/kajidog/aiviscloud-mcp/client/common/http"
+	"github.com/kajidog/aivis-cloud-cli/client/common/http"
 )
 
 // OutputFormat represents the audio output format
@@ -16,6 +16,14 @@ const (
 	OutputFormatMP3  OutputFormat = "mp3"
 	OutputFormatAAC  OutputFormat = "aac"
 	OutputFormatOpus OutputFormat = "opus"
+)
+
+// AudioChannels represents the audio channel configuration
+type AudioChannels string
+
+const (
+	AudioChannelsMono   AudioChannels = "mono"
+	AudioChannelsStereo AudioChannels = "stereo"
 )
 
 // Language represents the supported language
@@ -44,20 +52,20 @@ type TTSRequest struct {
 	Language *Language `json:"language,omitempty"`
 
 	// Audio output configuration
-	OutputFormat            *OutputFormat `json:"output_format,omitempty"`
-	OutputSamplingRate      *int          `json:"output_sampling_rate,omitempty"`
-	OutputAudioChannels     *int          `json:"output_audio_channels,omitempty"`
-	OutputBitrate           *int          `json:"output_bitrate,omitempty"`
-	LineBreakSilenceSeconds *float64      `json:"line_break_silence_seconds,omitempty"`
+	OutputFormat             *OutputFormat  `json:"output_format,omitempty"`
+	OutputBitrate            *int           `json:"output_bitrate,omitempty"`
+	OutputSamplingRate       *int           `json:"output_sampling_rate,omitempty"`
+	OutputAudioChannels      *AudioChannels `json:"output_audio_channels,omitempty"`
+	LeadingSilenceSeconds    *float64       `json:"leading_silence_seconds,omitempty"`
+	TrailingSilenceSeconds   *float64       `json:"trailing_silence_seconds,omitempty"`
+	LineBreakSilenceSeconds  *float64       `json:"line_break_silence_seconds,omitempty"`
 
 	// Voice parameters
 	SpeakingRate       *float64 `json:"speaking_rate,omitempty"`
-	Pitch              *float64 `json:"pitch,omitempty"`
-	Volume             *float64 `json:"volume,omitempty"`
 	EmotionalIntensity *float64 `json:"emotional_intensity,omitempty"`
 	TempoDynamics      *float64 `json:"tempo_dynamics,omitempty"`
-	PrePhonemeLength   *float64 `json:"pre_phoneme_length,omitempty"`
-	PostPhonemeLength  *float64 `json:"post_phoneme_length,omitempty"`
+	Pitch              *float64 `json:"pitch,omitempty"`
+	Volume             *float64 `json:"volume,omitempty"`
 }
 
 // TTSResponse represents a text-to-speech synthesis response
@@ -138,7 +146,7 @@ func (b *TTSRequestBuilder) WithOutputSamplingRate(rate int) *TTSRequestBuilder 
 }
 
 // WithOutputChannels sets the output audio channels
-func (b *TTSRequestBuilder) WithOutputChannels(channels int) *TTSRequestBuilder {
+func (b *TTSRequestBuilder) WithOutputChannels(channels AudioChannels) *TTSRequestBuilder {
 	b.request.OutputAudioChannels = &channels
 	return b
 }
@@ -146,6 +154,18 @@ func (b *TTSRequestBuilder) WithOutputChannels(channels int) *TTSRequestBuilder 
 // WithOutputBitrate sets the output bitrate
 func (b *TTSRequestBuilder) WithOutputBitrate(bitrate int) *TTSRequestBuilder {
 	b.request.OutputBitrate = &bitrate
+	return b
+}
+
+// WithLeadingSilence sets the leading silence duration
+func (b *TTSRequestBuilder) WithLeadingSilence(seconds float64) *TTSRequestBuilder {
+	b.request.LeadingSilenceSeconds = &seconds
+	return b
+}
+
+// WithTrailingSilence sets the trailing silence duration
+func (b *TTSRequestBuilder) WithTrailingSilence(seconds float64) *TTSRequestBuilder {
+	b.request.TrailingSilenceSeconds = &seconds
 	return b
 }
 
@@ -182,18 +202,6 @@ func (b *TTSRequestBuilder) WithEmotionalIntensity(intensity float64) *TTSReques
 // WithTempoDynamics sets the tempo dynamics
 func (b *TTSRequestBuilder) WithTempoDynamics(dynamics float64) *TTSRequestBuilder {
 	b.request.TempoDynamics = &dynamics
-	return b
-}
-
-// WithPrePhonemeLength sets the pre-phoneme length
-func (b *TTSRequestBuilder) WithPrePhonemeLength(length float64) *TTSRequestBuilder {
-	b.request.PrePhonemeLength = &length
-	return b
-}
-
-// WithPostPhonemeLength sets the post-phoneme length
-func (b *TTSRequestBuilder) WithPostPhonemeLength(length float64) *TTSRequestBuilder {
-	b.request.PostPhonemeLength = &length
 	return b
 }
 

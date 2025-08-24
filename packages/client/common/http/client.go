@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kajidog/aiviscloud-mcp/client/common/errors"
-	"github.com/kajidog/aiviscloud-mcp/client/config"
+	"github.com/kajidog/aivis-cloud-cli/client/common/errors"
+	"github.com/kajidog/aivis-cloud-cli/client/config"
 )
 
 // Client represents an HTTP client for Aivis Cloud API
@@ -201,6 +201,54 @@ func GetFileName(headers http.Header) string {
 	}
 
 	return ""
+}
+
+// HTTPClient interface defines the methods required for HTTP operations
+type HTTPClient interface {
+	Get(ctx context.Context, path string, query url.Values, result interface{}) error
+	Post(ctx context.Context, path string, body interface{}, result interface{}) error
+	Put(ctx context.Context, path string, body interface{}, result interface{}) error
+	Delete(ctx context.Context, path string, body interface{}, result interface{}) error
+}
+
+// Get performs a GET request
+func (c *Client) Get(ctx context.Context, path string, query url.Values, result interface{}) error {
+	req := &Request{
+		Method: "GET",
+		Path:   path,
+		Query:  query,
+	}
+	return c.DoJSON(ctx, req, result)
+}
+
+// Post performs a POST request
+func (c *Client) Post(ctx context.Context, path string, body interface{}, result interface{}) error {
+	req := &Request{
+		Method: "POST",
+		Path:   path,
+		Body:   body,
+	}
+	return c.DoJSON(ctx, req, result)
+}
+
+// Put performs a PUT request
+func (c *Client) Put(ctx context.Context, path string, body interface{}, result interface{}) error {
+	req := &Request{
+		Method: "PUT",
+		Path:   path,
+		Body:   body,
+	}
+	return c.DoJSON(ctx, req, result)
+}
+
+// Delete performs a DELETE request
+func (c *Client) Delete(ctx context.Context, path string, body interface{}, result interface{}) error {
+	req := &Request{
+		Method: "DELETE",
+		Path:   path,
+		Body:   body,
+	}
+	return c.DoJSON(ctx, req, result)
 }
 
 // BillingInfo contains billing and rate limit information from API response headers

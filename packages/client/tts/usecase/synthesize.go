@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/kajidog/aiviscloud-mcp/client/tts/domain"
+	"github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 )
 
 // TTSSynthesizer handles text-to-speech synthesis use cases
@@ -144,8 +144,10 @@ func (s *TTSSynthesizer) ValidateRequest(request *domain.TTSRequest) error {
 		return &ValidationError{Field: "OutputSamplingRate", Message: "OutputSamplingRate must be positive"}
 	}
 
-	if request.OutputAudioChannels != nil && (*request.OutputAudioChannels < 1 || *request.OutputAudioChannels > 2) {
-		return &ValidationError{Field: "OutputAudioChannels", Message: "OutputAudioChannels must be 1 or 2"}
+	if request.OutputAudioChannels != nil {
+		if *request.OutputAudioChannels != domain.AudioChannelsMono && *request.OutputAudioChannels != domain.AudioChannelsStereo {
+			return &ValidationError{Field: "OutputAudioChannels", Message: "OutputAudioChannels must be 'mono' or 'stereo'"}
+		}
 	}
 
 	if request.OutputBitrate != nil && *request.OutputBitrate <= 0 {

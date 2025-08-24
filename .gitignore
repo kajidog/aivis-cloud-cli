@@ -53,3 +53,7 @@ vendor/
 # Build artifacts
 dist/
 build/
+
+packages/cli/cli
+api-test.http
+.mcp.json

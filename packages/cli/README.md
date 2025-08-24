@@ -1,162 +1,80 @@
-# AivisCloud CLI
+# Aivis Cloud CLI
 
-Command-line interface for AivisCloud API, providing text-to-speech synthesis, audio playback, and model management capabilities.
+Aivis Cloud API を使用して音声合成と音声再生を行うコマンドラインツールです。
 
-## Installation
+**公式サイト**: https://aivis-project.com/
+
+## 機能・使用方法
+
+機能説明と使用例については、[npm パッケージの README](../npm/README.md) を参照してください。
+
+コマンド例の `npx @kajidog/aivis-cloud-cli` を `./aivis-cli` に読み替えて使用してください。
+
+## 開発・ビルド
+
+### 前提条件
+
+- Go 1.21 以上
+
+### ビルド
 
 ```bash
 cd packages/cli
+go mod tidy
 go build -o aivis-cli
 ```
 
-## Configuration
+### クロスプラットフォームビルド
 
-### Initialize Configuration
 ```bash
-./aivis-cli config init
+# macOS (Intel)
+GOOS=darwin GOARCH=amd64 go build -o aivis-cli-darwin-amd64
+
+# macOS (Apple Silicon)
+GOOS=darwin GOARCH=arm64 go build -o aivis-cli-darwin-arm64
+
+# Windows
+GOOS=windows GOARCH=amd64 go build -o aivis-cli-windows-amd64.exe
+
+# Linux
+GOOS=linux GOARCH=amd64 go build -o aivis-cli-linux-amd64
 ```
 
-### Set API Key
+## 事前準備
+
+Aivis Cloud API キーが必要です。
+
+### API キーの取得
+
+**ダッシュボード**: https://hub.aivis-project.com/cloud-api/dashboard
+
+ダッシュボードにアクセスして API キーを取得してください。
+
+### API キーの設定
+
 ```bash
+# 設定ファイルの初期化
+./aivis-cli config init
+
+# API キーの設定
 ./aivis-cli config set api_key YOUR_API_KEY
 ```
 
-### Configuration Options
-- `api_key`: Your AivisCloud API key (required)
-- `base_url`: API base URL (default: https://api.aivis-project.com)
-- `timeout`: Request timeout (default: 60s)
-- `default_playback_mode`: Default audio playback mode (immediate, queue, no_queue)
+### 設定オプション
 
-## Usage
-
-### Text-to-Speech
-
-#### Play Text
-```bash
-# Basic usage
-./aivis-cli tts play "こんにちは" model-uuid
-
-# With options
-./aivis-cli tts play "Hello world" model-uuid --volume 0.8 --rate 1.2 --mode queue
-```
-
-#### Synthesize to File
-```bash
-# Basic synthesis
-./aivis-cli tts synthesize "Hello" model-uuid output.wav
-
-# With custom format and options
-./aivis-cli tts synthesize "Hello" model-uuid output.mp3 --format mp3 --volume 0.9
-```
-
-#### Stream Synthesis
-```bash
-./aivis-cli tts stream "Hello world" model-uuid > output.wav
-```
-
-#### Playback Control
-```bash
-# Control playback
-./aivis-cli tts control stop
-./aivis-cli tts control pause
-./aivis-cli tts control resume
-./aivis-cli tts control status
-./aivis-cli tts control clear
-
-# Set volume
-./aivis-cli tts volume 0.7
-```
-
-### Model Management
-
-#### Search Models
-```bash
-# Basic search
-./aivis-cli models search "voice"
-
-# Search with filters
-./aivis-cli models search --author "author-name" --tags "tag1,tag2" --limit 5
-
-# Public models only
-./aivis-cli models search "japanese" --public
-```
-
-#### Get Model Details
-```bash
-# Model information
-./aivis-cli models get model-uuid
-
-# Model speakers
-./aivis-cli models get model-uuid --speakers
-```
-
-#### List Models
-```bash
-# Popular models
-./aivis-cli models popular --limit 10
-
-# Recent models
-./aivis-cli models recent --limit 5
-
-# Top-rated models
-./aivis-cli models top-rated
-```
-
-### Configuration Management
-
-```bash
-# Show current config
-./aivis-cli config show
-
-# Set/unset values
-./aivis-cli config set key value
-./aivis-cli config unset key
-
-# Validate configuration
-./aivis-cli config validate
-```
-
-## Output Formats
-
-Most commands support multiple output formats:
-- `--output table` (default): Human-readable table format
-- `--output json`: Machine-readable JSON format
-
-## TTS Parameters
-
-Available TTS parameters:
-- `--volume`: Audio volume (0.0 to 1.0)
-- `--rate`: Speaking rate multiplier
-- `--pitch`: Pitch adjustment
-- `--ssml`: Enable SSML markup processing
-- `--format`: Audio format (wav, flac, mp3, aac, opus)
-
-## Playback Modes
-
-- `immediate`: Stop current audio and play immediately
-- `queue`: Add to queue, play after current audio
-- `no_queue`: Allow simultaneous playback
-
-## Environment Variables
-
-- `AIVIS_API_KEY`: API key
-- `AIVIS_BASE_URL`: API base URL
-- `AIVIS_TIMEOUT`: Request timeout
-
-## Examples
-
-```bash
-# Complete workflow
-./aivis-cli config init
-./aivis-cli config set api_key your-key-here
-./aivis-cli models search "japanese" --limit 3
-./aivis-cli tts play "こんにちは、世界！" selected-model-uuid --mode queue
-
-# Batch synthesis
-./aivis-cli tts synthesize "Hello" model-uuid hello.wav --format wav
-./aivis-cli tts synthesize "Goodbye" model-uuid goodbye.mp3 --format mp3
-
-# Model exploration
-./aivis-cli models popular --output json | jq '.data[].name'
-./aivis-cli models get model-uuid --speakers --output table
-```
+| パラメータ                 | 型      | デフォルト値                    | 説明                                       |
+| -------------------------- | ------- | ------------------------------- | ------------------------------------------ |
+| `api_key`                  | string  | -                               | Aivis Cloud API キー（必須）               |
+| `base_url`                 | string  | `https://api.aivis-project.com` | API のベース URL                           |
+| `timeout`                  | string  | `60s`                           | HTTP リクエストのタイムアウト              |
+| `default_playback_mode`    | string  | `immediate`                     | デフォルトの音声再生モード                 |
+| `default_model_uuid`       | string  | -                               | デフォルト音声モデル UUID                  |
+| `default_format`           | string  | `wav`                           | デフォルト音声フォーマット                 |
+| `default_volume`           | float64 | `1.0`                           | デフォルト音量（0.0-2.0）                  |
+| `default_rate`             | float64 | `1.0`                           | デフォルト再生速度（0.5-2.0）              |
+| `default_pitch`            | float64 | `0.0`                           | デフォルトピッチ（-1.0 から 1.0）          |
+| `default_wait_for_end`     | bool    | `false`                         | デフォルト再生完了待機                     |
+| `use_simplified_tts_tools` | bool    | `false`                         | MCP で簡略化された TTS ツールを使用        |
+| `log_level`                | string  | `INFO`                          | ログレベル（DEBUG, INFO, WARN, ERROR）     |
+| `log_output`               | string  | `stdout`                        | ログ出力先（stdout, stderr, ファイルパス） |
+| `log_format`               | string  | `text`                          | ログ形式（text, json）                     |

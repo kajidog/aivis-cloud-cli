@@ -4,23 +4,26 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kajidog/aiviscloud-mcp/client"
-	"github.com/kajidog/aiviscloud-mcp/client/config"
+	"github.com/kajidog/aivis-cloud-cli/client"
+	"github.com/kajidog/aivis-cloud-cli/client/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	cfgFile    string
-	apiKey     string
-	verbose    bool
+	cfgFile     string
+	apiKey      string
+	verbose     bool
+	logLevel    string
+	logOutput   string
+	logFormat   string
 	aivisClient *client.Client
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "aivis-cli",
-	Short: "AivisCloud CLI - Text-to-speech synthesis and model management",
-	Long: `AivisCloud CLI provides command-line interface for AivisCloud API.
+	Short: "Aivis Cloud CLI - Text-to-speech synthesis and model management",
+	Long: `Aivis Cloud CLI provides command-line interface for Aivis Cloud API.
 Features include text-to-speech synthesis, audio playback, and model management.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip client initialization for config commands
@@ -38,12 +41,18 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.aivis-cli.yaml)")
-	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "AivisCloud API key")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "Aivis Cloud API key")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output (sets log level to DEBUG)")
+	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "INFO", "log level (DEBUG, INFO, WARN, ERROR)")
+	rootCmd.PersistentFlags().StringVar(&logOutput, "log-output", "stdout", "log output destination (stdout, stderr, or file path)")
+	rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "text", "log output format (text, json)")
 
 	rootCmd.AddCommand(ttsCmd)
 	rootCmd.AddCommand(modelsCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(usersCmd)
+	rootCmd.AddCommand(paymentCmd)
+	rootCmd.AddCommand(McpCmd)
 }
 
 func initConfig() {
@@ -82,11 +91,35 @@ func initializeClient() error {
 		cfg.HTTPTimeout = timeout
 	}
 
+	// Configure logging
+	if verbose {
+		cfg.LogLevel = "DEBUG"
+	} else if logLevel != "" {
+		cfg.LogLevel = logLevel
+	} else if configLogLevel := viper.GetString("log_level"); configLogLevel != "" {
+		cfg.LogLevel = configLogLevel
+	}
+
+	if logOutput != "" {
+		cfg.LogOutput = logOutput
+	} else if configLogOutput := viper.GetString("log_output"); configLogOutput != "" {
+		cfg.LogOutput = configLogOutput
+	}
+
+	if logFormat != "" {
+		cfg.LogFormat = logFormat
+	} else if configLogFormat := viper.GetString("log_format"); configLogFormat != "" {
+		cfg.LogFormat = configLogFormat
+	}
+
 	var err error
 	aivisClient, err = client.NewWithConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
+
+	// Share client with MCP package
+	SetClient(aivisClient)
 
 	return nil
 }

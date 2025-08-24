@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/kajidog/aiviscloud-mcp/client/common/http"
-	"github.com/kajidog/aiviscloud-mcp/client/models/domain"
+	"github.com/kajidog/aivis-cloud-cli/client/common/http"
+	"github.com/kajidog/aivis-cloud-cli/client/models/domain"
 )
 
 // ModelAPIRepository implements the ModelRepository interface using HTTP API calls
@@ -25,9 +25,9 @@ func NewModelAPIRepository(httpClient *http.Client) *ModelAPIRepository {
 func (r *ModelAPIRepository) SearchModels(ctx context.Context, request *domain.ModelSearchRequest) (*domain.ModelSearchResponse, error) {
 	query := url.Values{}
 
-	// Add query parameters
+	// Add query parameters - using actual API parameter names
 	if request.Query != nil {
-		query.Set("query", *request.Query)
+		query.Set("q", *request.Query)
 	}
 
 	if len(request.Tags) > 0 {
@@ -45,23 +45,25 @@ func (r *ModelAPIRepository) SearchModels(ctx context.Context, request *domain.M
 	}
 
 	if request.IsPublic != nil {
-		query.Set("is_public", strconv.FormatBool(*request.IsPublic))
+		query.Set("public", strconv.FormatBool(*request.IsPublic))
 	}
 
 	if request.ModelType != nil {
 		query.Set("model_type", *request.ModelType)
 	}
 
-	if request.Page != nil {
-		query.Set("page", strconv.Itoa(*request.Page))
+	// Use limit/offset instead of page/page_size
+	if request.PageSize != nil {
+		query.Set("limit", strconv.Itoa(*request.PageSize))
 	}
 
-	if request.PageSize != nil {
-		query.Set("page_size", strconv.Itoa(*request.PageSize))
+	if request.Page != nil && request.PageSize != nil {
+		offset := (*request.Page - 1) * *request.PageSize
+		query.Set("offset", strconv.Itoa(offset))
 	}
 
 	if request.SortBy != nil {
-		query.Set("sort_by", *request.SortBy)
+		query.Set("sort", *request.SortBy)
 	}
 
 	if request.SortOrder != nil {
@@ -74,13 +76,48 @@ func (r *ModelAPIRepository) SearchModels(ctx context.Context, request *domain.M
 		Query:  query,
 	}
 
-	var response domain.ModelSearchResponse
-	err := r.httpClient.DoJSON(ctx, httpReq, &response)
+	var apiResponse struct {
+		Total      int64           `json:"total"`
+		AivmModels []domain.Model `json:"aivm_models"`
+	}
+	
+	err := r.httpClient.DoJSON(ctx, httpReq, &apiResponse)
 	if err != nil {
 		return nil, err
 	}
 
-	return &response, nil
+	// Calculate pagination information
+	pageSize := 10 // Default page size
+	if request.PageSize != nil {
+		pageSize = *request.PageSize
+	}
+	
+	currentPage := 1
+	if request.Page != nil {
+		currentPage = *request.Page
+	}
+	
+	totalPages := int(apiResponse.Total) / pageSize
+	if int(apiResponse.Total)%pageSize > 0 {
+		totalPages++
+	}
+	
+	pagination := domain.Pagination{
+		CurrentPage:  currentPage,
+		PageSize:     pageSize,
+		TotalPages:   totalPages,
+		TotalResults: apiResponse.Total,
+		HasNext:      currentPage < totalPages,
+		HasPrevious:  currentPage > 1,
+	}
+
+	response := &domain.ModelSearchResponse{
+		Models:     apiResponse.AivmModels,
+		Total:      apiResponse.Total,
+		Pagination: pagination,
+	}
+
+	return response, nil
 }
 
 // GetModel retrieves a specific model by UUID

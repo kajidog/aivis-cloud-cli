@@ -23,58 +23,132 @@ type ModelSearchRequest struct {
 
 // ModelSearchResponse represents a model search response
 type ModelSearchResponse struct {
-	Models     []Model    `json:"models"`
+	Models     []Model    `json:"aivm_models"`
+	Total      int64      `json:"total"`
 	Pagination Pagination `json:"pagination"`
 }
 
 // Model represents an AI voice model
 type Model struct {
-	UUID        string    `json:"uuid"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Author      string    `json:"author"`
-	Tags        []string  `json:"tags"`
-	Language    string    `json:"language"`
-	IsPublic    bool      `json:"is_public"`
-	ModelType   string    `json:"model_type"`
-	Version     string    `json:"version"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	UUID             string    `json:"aivm_model_uuid"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	DetailedDesc     string    `json:"detailed_description,omitempty"`
+	Category         string    `json:"category,omitempty"`
+	VoiceTimbre      string    `json:"voice_timbre,omitempty"`
+	Visibility       string    `json:"visibility,omitempty"`
+	IsTagLocked      bool      `json:"is_tag_locked,omitempty"`
+	TotalDownloadCount int     `json:"total_download_count,omitempty"`
+	LikeCount        int       `json:"like_count,omitempty"`
+	IsLiked          bool      `json:"is_liked,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 
-	// Model-specific information
-	Speakers   []Speaker `json:"speakers,omitempty"`
-	SampleRate int       `json:"sample_rate,omitempty"`
-	VocabSize  int       `json:"vocab_size,omitempty"`
-	ModelSize  int64     `json:"model_size,omitempty"`
+	// User information
+	User *User `json:"user,omitempty"`
 
-	// Usage statistics
+	// Model files
+	ModelFiles []ModelFile `json:"model_files,omitempty"`
+
+	// Tags
+	Tags []Tag `json:"tags,omitempty"`
+
+	// Speakers
+	Speakers []Speaker `json:"speakers,omitempty"`
+
+	// Legacy fields for backward compatibility
+	Author        string  `json:"author"`
+	Language      string  `json:"language"`
+	IsPublic      bool    `json:"is_public"`
+	ModelType     string  `json:"model_type"`
+	Version       string  `json:"version"`
+	SampleRate    int     `json:"sample_rate,omitempty"`
+	VocabSize     int     `json:"vocab_size,omitempty"`
+	ModelSize     int64   `json:"model_size,omitempty"`
 	DownloadCount int     `json:"download_count,omitempty"`
 	UsageCount    int     `json:"usage_count,omitempty"`
 	Rating        float64 `json:"rating,omitempty"`
+	License       string  `json:"license,omitempty"`
+	Attribution   string  `json:"attribution,omitempty"`
+}
 
-	// License and attribution
-	License     string `json:"license,omitempty"`
-	Attribution string `json:"attribution,omitempty"`
+// User represents a user who owns models
+type User struct {
+	Handle       string        `json:"handle"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	IconURL      string        `json:"icon_url"`
+	AccountType  string        `json:"account_type"`
+	AccountStatus string       `json:"account_status"`
+	SocialLinks  []SocialLink  `json:"social_links,omitempty"`
+}
+
+// SocialLink represents a social media link
+type SocialLink struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+}
+
+// ModelFile represents a model file
+type ModelFile struct {
+	UUID             string    `json:"aivm_model_uuid"`
+	ManifestVersion  string    `json:"manifest_version"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	Creators         []string  `json:"creators"`
+	LicenseType      string    `json:"license_type"`
+	LicenseText      string    `json:"license_text"`
+	ModelType        string    `json:"model_type"`
+	ModelArchitecture string   `json:"model_architecture"`
+	ModelFormat      string    `json:"model_format"`
+	TrainingEpochs   int       `json:"training_epochs"`
+	TrainingSteps    int       `json:"training_steps"`
+	Version          string    `json:"version"`
+	FileSize         int64     `json:"file_size"`
+	Checksum         string    `json:"checksum"`
+	DownloadCount    int       `json:"download_count"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// Tag represents a model tag
+type Tag struct {
+	Name string `json:"name"`
 }
 
 // Speaker represents a speaker in a multi-speaker model
 type Speaker struct {
-	UUID        string  `json:"uuid"`
-	Name        string  `json:"name"`
-	Description string  `json:"description,omitempty"`
-	Gender      string  `json:"gender,omitempty"`
-	Age         int     `json:"age,omitempty"`
-	Language    string  `json:"language,omitempty"`
-	IsDefault   bool    `json:"is_default"`
-	Styles      []Style `json:"styles,omitempty"`
+	UUID               string   `json:"aivm_speaker_uuid"`
+	Name               string   `json:"name"`
+	IconURL            string   `json:"icon_url,omitempty"`
+	SupportedLanguages []string `json:"supported_languages,omitempty"`
+	LocalID            int      `json:"local_id"`
+	Styles             []Style  `json:"styles,omitempty"`
+	
+	// Legacy fields for backward compatibility
+	Description string `json:"description,omitempty"`
+	Gender      string `json:"gender,omitempty"`
+	Age         int    `json:"age,omitempty"`
+	Language    string `json:"language,omitempty"`
+	IsDefault   bool   `json:"is_default"`
 }
 
 // Style represents a speaking style for a speaker
 type Style struct {
-	LocalID     int    `json:"local_id"`
-	Name        string `json:"name"`
+	Name         string        `json:"name"`
+	IconURL      string        `json:"icon_url,omitempty"`
+	LocalID      int           `json:"local_id"`
+	VoiceSamples []VoiceSample `json:"voice_samples,omitempty"`
+	
+	// Legacy fields for backward compatibility
 	Description string `json:"description,omitempty"`
 	IsDefault   bool   `json:"is_default"`
+}
+
+// VoiceSample represents a voice sample for a style
+type VoiceSample struct {
+	AudioURL   string `json:"audio_url"`
+	Transcript string `json:"transcript"`
 }
 
 // Pagination represents pagination information

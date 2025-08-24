@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/kajidog/aiviscloud-mcp/client"
-	"github.com/kajidog/aiviscloud-mcp/client/tts/domain"
+	"github.com/kajidog/aivis-cloud-cli/client"
+	"github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 )
 
 func main() {
@@ -36,11 +36,14 @@ func main() {
 	// Wait for playback to complete
 	time.Sleep(2 * time.Second)
 
-	// Example 2: Audio playback with custom options
+	// Example 2: Audio playback with custom options including new fields
 	fmt.Println("Example 2: Custom playback options")
 	ttsRequest := client.NewTTSRequest("model-uuid", "カスタム音声設定のテストです").
 		WithVolume(0.8).
 		WithSpeakingRate(1.2).
+		WithLeadingSilence(0.2).
+		WithTrailingSilence(0.3).
+		WithOutputChannels(domain.AudioChannelsStereo).
 		Build()
 
 	playbackRequest := client.NewPlaybackRequest(ttsRequest).
@@ -50,7 +53,7 @@ func main() {
 
 	err = client.PlayRequest(ctx, playbackRequest)
 	if err != nil {
-		log.Printf("Failed to play with options: %v", err)
+		client.GetLogger().Errorf("Failed to play with options: %v", err)
 	}
 
 	// Example 3: Playback control

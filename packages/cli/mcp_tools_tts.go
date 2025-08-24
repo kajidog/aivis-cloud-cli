@@ -1,0 +1,325 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	ttsDomain "github.com/kajidog/aivis-cloud-cli/client/tts/domain"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/spf13/viper"
+)
+
+// SynthesizeSpeechParams parameters for synthesize_speech tool
+type SynthesizeSpeechParams struct {
+	Text         string `json:"text"`
+	ModelUUID    string `json:"model_uuid,omitempty"`    // optional, uses config default
+	Format       string `json:"format,omitempty"`        // wav, mp3, flac, aac, opus
+	Volume       float64 `json:"volume,omitempty"`        // 0.0-2.0
+	Rate         float64 `json:"rate,omitempty"`          // 0.5-2.0
+	Pitch        float64 `json:"pitch,omitempty"`         // -1.0 to 1.0
+	PlaybackMode string `json:"playback_mode,omitempty"` // immediate, queue, no_queue
+	WaitForEnd   bool   `json:"wait_for_end,omitempty"`  // wait until playback completes
+}
+
+// PlayTextParams parameters for play_text tool (simplified version)
+type PlayTextParams struct {
+	Text         string `json:"text"`
+	PlaybackMode string `json:"playback_mode,omitempty"` // immediate, queue, no_queue
+	WaitForEnd   bool   `json:"wait_for_end,omitempty"`  // wait until playback completes
+}
+
+// RegisterTTSTools registers all TTS-related MCP tools
+func RegisterTTSTools(server *mcp.Server) {
+	// Check if simplified mode is enabled (default settings are configured)
+	defaultModelUUID := viper.GetString("default_model_uuid")
+	useSimplifiedTools := viper.GetBool("use_simplified_tts_tools") && defaultModelUUID != ""
+
+	if useSimplifiedTools {
+		// Register simplified text-only tool
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "play_text",
+			Description: "Play text as speech using default configuration (only text parameter required)",
+		}, handlePlayText)
+	} else {
+		// Register full-featured tool
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "synthesize_speech",
+			Description: "Convert text to speech and play it locally on the server",
+		}, handleSynthesizeSpeech)
+	}
+}
+
+func handleSynthesizeSpeech(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[SynthesizeSpeechParams]) (*mcp.CallToolResultFor[any], error) {
+	args := params.Arguments
+
+	if args.Text == "" {
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Text is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	// Use default model UUID from config if not provided
+	modelUUID := args.ModelUUID
+	if modelUUID == "" {
+		modelUUID = viper.GetString("default_model_uuid")
+		if modelUUID == "" {
+			// Use hardcoded default model UUID if not configured
+			modelUUID = defaultModelUUID
+		}
+	}
+
+	// Build TTS request
+	request := aivisClient.NewTTSRequest(modelUUID, args.Text)
+
+	// Apply optional parameters with config defaults
+	volume := args.Volume
+	if volume == 0 {
+		volume = viper.GetFloat64("default_volume")
+	}
+	if volume > 0 {
+		request = request.WithVolume(volume)
+	}
+
+	rate := args.Rate
+	if rate == 0 {
+		rate = viper.GetFloat64("default_rate")
+	}
+	if rate > 0 {
+		request = request.WithSpeakingRate(rate)
+	}
+
+	pitch := args.Pitch
+	if pitch == 0 {
+		pitch = viper.GetFloat64("default_pitch")
+	}
+	if pitch != 0 {
+		request = request.WithPitch(pitch)
+	}
+
+	// Set output format with config default
+	format := args.Format
+	if format == "" {
+		format = viper.GetString("default_format")
+	}
+	if format != "" {
+		switch format {
+		case "wav":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatWAV)
+		case "mp3":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatMP3)
+		case "flac":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatFLAC)
+		case "aac":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatAAC)
+		case "opus":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatOpus)
+		}
+	}
+
+	// Create playback request with options
+	playbackReq := aivisClient.NewPlaybackRequest(request.Build())
+	
+	// Set playback mode
+	playbackMode := args.PlaybackMode
+	if playbackMode == "" {
+		playbackMode = viper.GetString("default_playback_mode")
+	}
+	if playbackMode != "" {
+		switch playbackMode {
+		case "immediate":
+			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeImmediate)
+		case "queue":
+			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeQueue)
+		case "no_queue":
+			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeNoQueue)
+		}
+	}
+	
+	// Set wait for end flag
+	waitForEnd := args.WaitForEnd
+	if !waitForEnd {
+		waitForEnd = viper.GetBool("default_wait_for_end")
+	}
+	playbackReq = playbackReq.WithWaitForEnd(waitForEnd)
+	
+	// Play with options
+	err := aivisClient.PlayRequest(ctx, playbackReq.Build())
+	if err != nil {
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Speech synthesis and playback failed: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+	
+	// Wait for playback to complete if requested  
+	if waitForEnd {
+		for {
+			status := aivisClient.GetPlaybackStatus()
+			if status.Status == ttsDomain.PlaybackStatusIdle || 
+			   status.Status == ttsDomain.PlaybackStatusStopped {
+				break
+			}
+			// Short sleep to avoid busy waiting
+			select {
+			case <-ctx.Done():
+				return &mcp.CallToolResultFor[any]{
+					Content: []mcp.Content{&mcp.TextContent{Text: "Context cancelled while waiting for playback completion"}},
+					IsError: true,
+				}, nil
+			case <-time.After(100 * time.Millisecond):
+				continue
+			}
+		}
+	}
+
+	// Format response with playback info
+	resultText := "Audio synthesized and played successfully\n"
+	resultText += fmt.Sprintf("Text: %s\n", args.Text)
+	resultText += fmt.Sprintf("Model: %s\n", modelUUID)
+	if format != "" {
+		resultText += fmt.Sprintf("Format: %s\n", format)
+	}
+	if volume > 0 {
+		resultText += fmt.Sprintf("Volume: %.2f\n", volume)
+	}
+	if rate > 0 {
+		resultText += fmt.Sprintf("Speaking Rate: %.2f\n", rate)
+	}
+	if pitch != 0 {
+		resultText += fmt.Sprintf("Pitch: %.2f\n", pitch)
+	}
+	if playbackMode != "" {
+		resultText += fmt.Sprintf("Playback Mode: %s\n", playbackMode)
+	}
+	if waitForEnd {
+		resultText += "Waited for playback completion\n"
+		resultText += "Audio playback completed"
+	} else {
+		resultText += "Audio is now playing on the server"
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+	}, nil
+}
+
+func handlePlayText(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[PlayTextParams]) (*mcp.CallToolResultFor[any], error) {
+	args := params.Arguments
+
+	if args.Text == "" {
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Text is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	// Use default model UUID from config
+	modelUUID := viper.GetString("default_model_uuid")
+	if modelUUID == "" {
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Default model UUID is not configured"}},
+			IsError: true,
+		}, nil
+	}
+
+	// Create TTS request with defaults
+	request := aivisClient.NewTTSRequest(modelUUID, args.Text)
+	
+	// Apply default settings from config
+	if volume := viper.GetFloat64("default_volume"); volume > 0 {
+		request = request.WithVolume(volume)
+	}
+	if rate := viper.GetFloat64("default_rate"); rate > 0 {
+		request = request.WithSpeakingRate(rate)
+	}
+	if pitch := viper.GetFloat64("default_pitch"); pitch != 0 {
+		request = request.WithPitch(pitch)
+	}
+	if format := viper.GetString("default_format"); format != "" {
+		switch format {
+		case "wav":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatWAV)
+		case "mp3":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatMP3)
+		case "flac":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatFLAC)
+		case "aac":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatAAC)
+		case "opus":
+			request = request.WithOutputFormat(ttsDomain.OutputFormatOpus)
+		}
+	}
+	
+	// Create playback request with options
+	playbackReq := aivisClient.NewPlaybackRequest(request.Build())
+	
+	// Set playback mode
+	playbackMode := args.PlaybackMode
+	if playbackMode == "" {
+		playbackMode = viper.GetString("default_playback_mode")
+	}
+	if playbackMode != "" {
+		switch playbackMode {
+		case "immediate":
+			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeImmediate)
+		case "queue":
+			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeQueue)
+		case "no_queue":
+			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeNoQueue)
+		}
+	}
+	
+	// Set wait for end flag
+	waitForEnd := args.WaitForEnd
+	if !waitForEnd {
+		waitForEnd = viper.GetBool("default_wait_for_end")
+	}
+	playbackReq = playbackReq.WithWaitForEnd(waitForEnd)
+	
+	// Play with options
+	err := aivisClient.PlayRequest(ctx, playbackReq.Build())
+	if err != nil {
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Speech synthesis and playback failed: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+	
+	// Wait for playback to complete if requested  
+	if waitForEnd {
+		for {
+			status := aivisClient.GetPlaybackStatus()
+			if status.Status == ttsDomain.PlaybackStatusIdle || 
+			   status.Status == ttsDomain.PlaybackStatusStopped {
+				break
+			}
+			// Short sleep to avoid busy waiting
+			select {
+			case <-ctx.Done():
+				return &mcp.CallToolResultFor[any]{
+					Content: []mcp.Content{&mcp.TextContent{Text: "Context cancelled while waiting for playback completion"}},
+					IsError: true,
+				}, nil
+			case <-time.After(100 * time.Millisecond):
+				continue
+			}
+		}
+	}
+
+	// Format response
+	resultText := fmt.Sprintf("Text: %s\n", args.Text)
+	if playbackMode != "" {
+		resultText += fmt.Sprintf("Playback Mode: %s\n", playbackMode)
+	}
+	if args.WaitForEnd {
+		resultText += "Audio playback completed"
+	} else {
+		resultText += "Audio is now playing on the server"
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+	}, nil
+}

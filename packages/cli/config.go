@@ -143,6 +143,27 @@ var configInitCmd = &cobra.Command{
 		if !viper.IsSet("default_playback_mode") {
 			viper.Set("default_playback_mode", "immediate")
 		}
+		if !viper.IsSet("default_model_uuid") {
+			viper.Set("default_model_uuid", "")
+		}
+		if !viper.IsSet("default_format") {
+			viper.Set("default_format", "wav")
+		}
+		if !viper.IsSet("default_volume") {
+			viper.Set("default_volume", 1.0)
+		}
+		if !viper.IsSet("default_rate") {
+			viper.Set("default_rate", 1.0)
+		}
+		if !viper.IsSet("default_pitch") {
+			viper.Set("default_pitch", 0.0)
+		}
+		if !viper.IsSet("use_simplified_tts_tools") {
+			viper.Set("use_simplified_tts_tools", false)
+		}
+		if !viper.IsSet("default_wait_for_end") {
+			viper.Set("default_wait_for_end", false)
+		}
 
 		// Write config file
 		if err := viper.WriteConfig(); err != nil {

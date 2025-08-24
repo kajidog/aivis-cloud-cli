@@ -3,9 +3,12 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
+	"time"
 
-	"github.com/kajidog/aiviscloud-mcp/client/tts/domain"
+	"github.com/kajidog/aivis-cloud-cli/client/common/logger"
+	"github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 )
 
 // AudioPlayerService manages audio playback with queue support
@@ -14,6 +17,7 @@ type AudioPlayerService struct {
 	player     domain.AudioPlayer
 	config     *domain.PlaybackConfig
 	queue      []queueItem
+	logger     logger.Logger
 	mu         sync.RWMutex
 	processing bool
 }
@@ -27,8 +31,16 @@ type queueItem struct {
 
 // NewAudioPlayerService creates a new audio player service
 func NewAudioPlayerService(ttsService *TTSSynthesizer, player domain.AudioPlayer, config *domain.PlaybackConfig) *AudioPlayerService {
+	return NewAudioPlayerServiceWithLogger(ttsService, player, config, logger.NewNoop())
+}
+
+// NewAudioPlayerServiceWithLogger creates a new audio player service with logger
+func NewAudioPlayerServiceWithLogger(ttsService *TTSSynthesizer, player domain.AudioPlayer, config *domain.PlaybackConfig, log logger.Logger) *AudioPlayerService {
 	if config == nil {
 		config = domain.DefaultPlaybackConfig()
+	}
+	if log == nil {
+		log = logger.NewNoop()
 	}
 	
 	return &AudioPlayerService{
@@ -36,6 +48,7 @@ func NewAudioPlayerService(ttsService *TTSSynthesizer, player domain.AudioPlayer
 		player:     player,
 		config:     config,
 		queue:      make([]queueItem, 0),
+		logger:     log,
 	}
 }
 
@@ -116,34 +129,39 @@ func (s *AudioPlayerService) playImmediate(ctx context.Context, request *domain.
 
 // addToQueue adds request to queue for sequential playback
 func (s *AudioPlayerService) addToQueue(ctx context.Context, request *domain.PlaybackRequest) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	
-	// Check queue size limit
-	if len(s.queue) >= s.config.MaxQueueSize {
-		return fmt.Errorf("queue is full (max size: %d)", s.config.MaxQueueSize)
-	}
-	
 	done := make(chan error, 1)
-	item := queueItem{
-		request: request,
-		ctx:     ctx,
-		done:    done,
-	}
 	
-	s.queue = append(s.queue, item)
+	// Add item to queue with lock
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		
+		// Check queue size limit
+		if len(s.queue) >= s.config.MaxQueueSize {
+			done <- fmt.Errorf("queue is full (max size: %d)", s.config.MaxQueueSize)
+			return
+		}
+		
+		item := queueItem{
+			request: request,
+			ctx:     ctx,
+			done:    done,
+		}
+		
+		s.queue = append(s.queue, item)
+		
+		// Update queue length if player supports it
+		if setter, ok := s.player.(interface{ SetQueueLength(int) }); ok {
+			setter.SetQueueLength(len(s.queue))
+		}
+		
+		// Start processing queue if not already processing
+		if !s.processing && len(s.queue) == 1 {
+			go s.processQueue()
+		}
+	}()
 	
-	// Update queue length if player supports it
-	if setter, ok := s.player.(interface{ SetQueueLength(int) }); ok {
-		setter.SetQueueLength(len(s.queue))
-	}
-	
-	// Start processing queue if not already processing
-	if !s.processing && len(s.queue) == 1 {
-		go s.processQueue()
-	}
-	
-	// Wait for this item to be processed
+	// Wait for this item to be processed (outside the lock)
 	return <-done
 }
 
@@ -213,13 +231,6 @@ func (s *AudioPlayerService) synthesizeAndPlay(ctx context.Context, request *dom
 		return fmt.Errorf("invalid TTS request: %w", err)
 	}
 	
-	// Synthesize audio
-	response, err := s.ttsService.Synthesize(ctx, request.TTSRequest)
-	if err != nil {
-		return fmt.Errorf("TTS synthesis failed: %w", err)
-	}
-	defer response.AudioData.Close()
-	
 	// Set current text for status reporting
 	if player, ok := s.player.(interface{ SetCurrentText(string) }); ok {
 		player.SetCurrentText(request.TTSRequest.Text)
@@ -238,8 +249,8 @@ func (s *AudioPlayerService) synthesizeAndPlay(ctx context.Context, request *dom
 		format = *request.TTSRequest.OutputFormat
 	}
 	
-	// Play audio
-	return s.player.Play(ctx, response.AudioData, format)
+	// Use streaming synthesis with progressive playback
+	return s.synthesizeAndPlayStream(ctx, request, format)
 }
 
 // Stop stops current playback and clears queue
@@ -290,6 +301,97 @@ func (s *AudioPlayerService) ClearQueue() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.queue = make([]queueItem, 0)
+}
+
+// synthesizeAndPlayStream performs streaming TTS synthesis with progressive playback
+func (s *AudioPlayerService) synthesizeAndPlayStream(ctx context.Context, request *domain.PlaybackRequest, format domain.OutputFormat) error {
+	// Create a pipe for streaming audio data
+	pipeReader, pipeWriter := io.Pipe()
+	defer pipeReader.Close()
+	
+	// Error channel for goroutine communication
+	errChan := make(chan error, 2)
+	
+	// Start playback in a goroutine (will wait for first chunk)
+	go func() {
+		// Create independent context for audio playback to prevent premature cancellation
+		playbackCtx := context.Background()
+		err := s.player.Play(playbackCtx, pipeReader, format)
+		if err != nil {
+			errChan <- fmt.Errorf("playback failed: %w", err)
+		} else {
+			errChan <- nil
+		}
+	}()
+	
+	// Create streaming handler that writes to pipe
+	handler := &streamingPlaybackHandler{
+		writer:      pipeWriter,
+		firstChunk:  true,
+		startTime:   time.Now(),
+		logger:      s.logger,
+	}
+	
+	// Start streaming synthesis
+	go func() {
+		err := s.ttsService.SynthesizeStream(ctx, request.TTSRequest, handler)
+		pipeWriter.Close() // Close writer when done
+		if err != nil {
+			errChan <- fmt.Errorf("synthesis failed: %w", err)
+		} else {
+			errChan <- nil
+		}
+	}()
+	
+	// Wait for both synthesis and playback to complete
+	var synthErr, playErr error
+	for i := 0; i < 2; i++ {
+		if err := <-errChan; err != nil {
+			if synthErr == nil {
+				synthErr = err
+			} else {
+				playErr = err
+			}
+		}
+	}
+	
+	// Return the first error if any
+	if synthErr != nil {
+		return synthErr
+	}
+	return playErr
+}
+
+// streamingPlaybackHandler handles streaming TTS for progressive playback
+type streamingPlaybackHandler struct {
+	writer     io.WriteCloser
+	firstChunk bool
+	startTime  time.Time
+	logger     logger.Logger
+}
+
+func (h *streamingPlaybackHandler) OnChunk(chunk *domain.TTSStreamChunk) error {
+	if h.firstChunk {
+		h.firstChunk = false
+		h.logger.Info("First audio chunk received - starting playback", 
+			logger.Duration("elapsed", time.Since(h.startTime)),
+		)
+	}
+	
+	// Write chunk to pipe for immediate playback
+	_, err := h.writer.Write(chunk.Data)
+	return err
+}
+
+func (h *streamingPlaybackHandler) OnComplete() error {
+	h.logger.Info("Streaming synthesis completed", 
+		logger.Duration("elapsed", time.Since(h.startTime)),
+	)
+	return nil
+}
+
+func (h *streamingPlaybackHandler) OnError(err error) {
+	h.logger.Error("Streaming error occurred", logger.Error(err))
 }
 
 // Close closes the audio player service and releases resources

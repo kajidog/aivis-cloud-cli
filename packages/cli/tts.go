@@ -6,9 +6,12 @@ import (
 	"os"
 	"strconv"
 
-	ttsDomain "github.com/kajidog/aiviscloud-mcp/client/tts/domain"
+	ttsDomain "github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 	"github.com/spf13/cobra"
 )
+
+// Default model UUID when not specified
+const defaultModelUUID = "a59cb814-0083-4369-8542-f51a29e72af7"
 
 // streamHandler implements TTSStreamHandler for CLI output
 type streamHandler struct {
@@ -46,17 +49,39 @@ var ttsPlayCmd = &cobra.Command{
 	Use:   "play [text] [model-uuid]",
 	Short: "Synthesize text and play audio",
 	Long:  "Convert text to speech using specified model and play the audio",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.RangeArgs(0, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		text := args[0]
-		modelUUID := args[1]
+		text := ""
+		modelUUID := defaultModelUUID
+		
+		// Get text from args or flag
+		if len(args) > 0 {
+			text = args[0]
+			if len(args) > 1 {
+				modelUUID = args[1]
+			}
+		}
+		if flagText, _ := cmd.Flags().GetString("text"); flagText != "" {
+			text = flagText
+		}
+		
+		if text == "" {
+			return fmt.Errorf("text is required (provide as argument or --text flag)")
+		}
+
+		// Check for model-uuid flag
+		if flagModelUUID, _ := cmd.Flags().GetString("model-uuid"); flagModelUUID != "" {
+			modelUUID = flagModelUUID
+		}
 
 		// Get flags
 		volume, _ := cmd.Flags().GetFloat64("volume")
 		rate, _ := cmd.Flags().GetFloat64("rate")
 		pitch, _ := cmd.Flags().GetFloat64("pitch")
 		ssml, _ := cmd.Flags().GetBool("ssml")
-		mode, _ := cmd.Flags().GetString("mode")
+		channels, _ := cmd.Flags().GetString("channels")
+		leadingSilence, _ := cmd.Flags().GetFloat64("leading-silence")
+		trailingSilence, _ := cmd.Flags().GetFloat64("trailing-silence")
 
 		// Build TTS request
 		request := aivisClient.NewTTSRequest(modelUUID, text)
@@ -73,21 +98,27 @@ var ttsPlayCmd = &cobra.Command{
 		if ssml {
 			request = request.WithSSML(true)
 		}
+		if channels != "" {
+			switch channels {
+			case "mono":
+				request = request.WithOutputChannels(ttsDomain.AudioChannelsMono)
+			case "stereo":
+				request = request.WithOutputChannels(ttsDomain.AudioChannelsStereo)
+			}
+		}
+		if leadingSilence > 0 {
+			request = request.WithLeadingSilence(leadingSilence)
+		}
+		if trailingSilence > 0 {
+			request = request.WithTrailingSilence(trailingSilence)
+		}
 
 		ttsReq := request.Build()
 
-		// Build playback request
-		playbackBuilder := aivisClient.NewPlaybackRequest(ttsReq)
-		
-		switch mode {
-		case "immediate":
-			playbackBuilder = playbackBuilder.WithMode(ttsDomain.PlaybackModeImmediate)
-		case "queue":
-			playbackBuilder = playbackBuilder.WithMode(ttsDomain.PlaybackModeQueue)
-		case "no_queue":
-			playbackBuilder = playbackBuilder.WithMode(ttsDomain.PlaybackModeNoQueue)
-		}
-
+		// Build playback request with WaitForEnd flag for synchronous playback
+		playbackBuilder := aivisClient.NewPlaybackRequest(ttsReq).
+			WithMode(ttsDomain.PlaybackModeImmediate).
+			WithWaitForEnd(true)
 		playbackReq := playbackBuilder.Build()
 
 		ctx := context.Background()
@@ -104,14 +135,43 @@ var ttsPlayCmd = &cobra.Command{
 }
 
 var ttsSynthesizeCmd = &cobra.Command{
-	Use:   "synthesize [text] [model-uuid] [output-file]",
+	Use:   "synthesize [text] [output-file] [model-uuid]",
 	Short: "Synthesize text to audio file",
 	Long:  "Convert text to speech and save to audio file",
-	Args:  cobra.ExactArgs(3),
+	Args:  cobra.RangeArgs(0, 3),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		text := args[0]
-		modelUUID := args[1]
-		outputFile := args[2]
+		text := ""
+		outputFile := ""
+		modelUUID := defaultModelUUID
+		
+		// Get text and output from args or flags
+		if len(args) > 0 {
+			text = args[0]
+			if len(args) > 1 {
+				outputFile = args[1]
+				if len(args) > 2 {
+					modelUUID = args[2]
+				}
+			}
+		}
+		if flagText, _ := cmd.Flags().GetString("text"); flagText != "" {
+			text = flagText
+		}
+		if flagOutput, _ := cmd.Flags().GetString("output"); flagOutput != "" {
+			outputFile = flagOutput
+		}
+		
+		if text == "" {
+			return fmt.Errorf("text is required (provide as argument or --text flag)")
+		}
+		if outputFile == "" {
+			return fmt.Errorf("output file is required (provide as argument or --output flag)")
+		}
+
+		// Check for model-uuid flag
+		if flagModelUUID, _ := cmd.Flags().GetString("model-uuid"); flagModelUUID != "" {
+			modelUUID = flagModelUUID
+		}
 
 		// Get flags
 		volume, _ := cmd.Flags().GetFloat64("volume")
@@ -119,6 +179,11 @@ var ttsSynthesizeCmd = &cobra.Command{
 		pitch, _ := cmd.Flags().GetFloat64("pitch")
 		ssml, _ := cmd.Flags().GetBool("ssml")
 		format, _ := cmd.Flags().GetString("format")
+		channels, _ := cmd.Flags().GetString("channels")
+		leadingSilence, _ := cmd.Flags().GetFloat64("leading-silence")
+		trailingSilence, _ := cmd.Flags().GetFloat64("trailing-silence")
+		samplingRate, _ := cmd.Flags().GetInt("sampling-rate")
+		bitrate, _ := cmd.Flags().GetInt("bitrate")
 
 		// Build TTS request
 		request := aivisClient.NewTTSRequest(modelUUID, text)
@@ -150,6 +215,28 @@ var ttsSynthesizeCmd = &cobra.Command{
 			request = request.WithOutputFormat(ttsDomain.OutputFormatOpus)
 		}
 
+		// Set additional options
+		if channels != "" {
+			switch channels {
+			case "mono":
+				request = request.WithOutputChannels(ttsDomain.AudioChannelsMono)
+			case "stereo":
+				request = request.WithOutputChannels(ttsDomain.AudioChannelsStereo)
+			}
+		}
+		if leadingSilence > 0 {
+			request = request.WithLeadingSilence(leadingSilence)
+		}
+		if trailingSilence > 0 {
+			request = request.WithTrailingSilence(trailingSilence)
+		}
+		if samplingRate > 0 {
+			request = request.WithOutputSamplingRate(samplingRate)
+		}
+		if bitrate > 0 {
+			request = request.WithOutputBitrate(bitrate)
+		}
+
 		ttsReq := request.Build()
 
 		// Create output file
@@ -173,10 +260,30 @@ var ttsStreamCmd = &cobra.Command{
 	Use:   "stream [text] [model-uuid]",
 	Short: "Stream synthesis with real-time output",
 	Long:  "Convert text to speech with streaming synthesis",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.RangeArgs(0, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		text := args[0]
-		modelUUID := args[1]
+		text := ""
+		modelUUID := defaultModelUUID
+		
+		// Get text from args or flag
+		if len(args) > 0 {
+			text = args[0]
+			if len(args) > 1 {
+				modelUUID = args[1]
+			}
+		}
+		if flagText, _ := cmd.Flags().GetString("text"); flagText != "" {
+			text = flagText
+		}
+		
+		if text == "" {
+			return fmt.Errorf("text is required (provide as argument or --text flag)")
+		}
+
+		// Check for model-uuid flag
+		if flagModelUUID, _ := cmd.Flags().GetString("model-uuid"); flagModelUUID != "" {
+			modelUUID = flagModelUUID
+		}
 
 		// Build basic TTS request
 		request := aivisClient.NewTTSRequest(modelUUID, text).Build()
@@ -263,18 +370,34 @@ var ttsVolumeCmd = &cobra.Command{
 
 func init() {
 	// TTS play command flags
-	ttsPlayCmd.Flags().Float64("volume", 0, "Audio volume (0.0 to 1.0)")
-	ttsPlayCmd.Flags().Float64("rate", 0, "Speaking rate")
-	ttsPlayCmd.Flags().Float64("pitch", 0, "Pitch adjustment")
+	ttsPlayCmd.Flags().String("text", "", "Text to synthesize")
+	ttsPlayCmd.Flags().String("model-uuid", "", "Voice model UUID (uses default if not specified)")
+	ttsPlayCmd.Flags().Float64("volume", 0, "Audio volume (0.0 to 2.0)")
+	ttsPlayCmd.Flags().Float64("rate", 0, "Speaking rate (0.5 to 2.0)")
+	ttsPlayCmd.Flags().Float64("pitch", 0, "Pitch adjustment (-1.0 to 1.0)")
 	ttsPlayCmd.Flags().Bool("ssml", false, "Enable SSML parsing")
-	ttsPlayCmd.Flags().String("mode", "", "Playback mode: immediate, queue, no_queue")
+	ttsPlayCmd.Flags().String("channels", "", "Audio channels: mono, stereo")
+	ttsPlayCmd.Flags().Float64("leading-silence", 0, "Leading silence duration in seconds (0.0 to 60.0)")
+	ttsPlayCmd.Flags().Float64("trailing-silence", 0, "Trailing silence duration in seconds (0.0 to 60.0)")
 
 	// TTS synthesize command flags
-	ttsSynthesizeCmd.Flags().Float64("volume", 0, "Audio volume (0.0 to 1.0)")
-	ttsSynthesizeCmd.Flags().Float64("rate", 0, "Speaking rate")
-	ttsSynthesizeCmd.Flags().Float64("pitch", 0, "Pitch adjustment")
+	ttsSynthesizeCmd.Flags().String("text", "", "Text to synthesize")
+	ttsSynthesizeCmd.Flags().String("output", "", "Output file path")
+	ttsSynthesizeCmd.Flags().String("model-uuid", "", "Voice model UUID (uses default if not specified)")
+	ttsSynthesizeCmd.Flags().Float64("volume", 0, "Audio volume (0.0 to 2.0)")
+	ttsSynthesizeCmd.Flags().Float64("rate", 0, "Speaking rate (0.5 to 2.0)")
+	ttsSynthesizeCmd.Flags().Float64("pitch", 0, "Pitch adjustment (-1.0 to 1.0)")
 	ttsSynthesizeCmd.Flags().Bool("ssml", false, "Enable SSML parsing")
 	ttsSynthesizeCmd.Flags().String("format", "wav", "Output format: wav, flac, mp3, aac, opus")
+	ttsSynthesizeCmd.Flags().String("channels", "", "Audio channels: mono, stereo")
+	ttsSynthesizeCmd.Flags().Float64("leading-silence", 0, "Leading silence duration in seconds (0.0 to 60.0)")
+	ttsSynthesizeCmd.Flags().Float64("trailing-silence", 0, "Trailing silence duration in seconds (0.0 to 60.0)")
+	ttsSynthesizeCmd.Flags().Int("sampling-rate", 0, "Output sampling rate (8000, 11025, 12000, 16000, 22050, 24000, 44100, 48000)")
+	ttsSynthesizeCmd.Flags().Int("bitrate", 0, "Output bitrate in kbps (8 to 320, not applicable for wav/flac)")
+
+	// TTS stream command flags
+	ttsStreamCmd.Flags().String("text", "", "Text to synthesize")
+	ttsStreamCmd.Flags().String("model-uuid", "", "Voice model UUID (uses default if not specified)")
 
 	// Add subcommands to tts command
 	ttsCmd.AddCommand(ttsPlayCmd)

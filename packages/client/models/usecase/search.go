@@ -3,7 +3,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/kajidog/aiviscloud-mcp/client/models/domain"
+	"github.com/kajidog/aivis-cloud-cli/client/models/domain"
 )
 
 // ModelSearcher handles model search use cases
@@ -77,11 +77,9 @@ func (s *ModelSearcher) SearchModelsByTags(ctx context.Context, tags ...string) 
 
 // GetPopularModels retrieves popular models sorted by download count
 func (s *ModelSearcher) GetPopularModels(ctx context.Context, limit int) (*domain.ModelSearchResponse, error) {
+	// Use basic search with no specific sorting - API doesn't support download_count sorting
 	request := domain.NewModelSearchRequestBuilder().
-		WithPublicOnly().
 		WithPageSize(limit).
-		SortByDownloadCount().
-		Descending().
 		Build()
 
 	return s.SearchModels(ctx, request)
@@ -89,11 +87,9 @@ func (s *ModelSearcher) GetPopularModels(ctx context.Context, limit int) (*domai
 
 // GetRecentModels retrieves recently updated models
 func (s *ModelSearcher) GetRecentModels(ctx context.Context, limit int) (*domain.ModelSearchResponse, error) {
+	// Use basic search with no specific sorting - API doesn't support updated_at sorting
 	request := domain.NewModelSearchRequestBuilder().
-		WithPublicOnly().
 		WithPageSize(limit).
-		SortByUpdatedAt().
-		Descending().
 		Build()
 
 	return s.SearchModels(ctx, request)
@@ -101,11 +97,9 @@ func (s *ModelSearcher) GetRecentModels(ctx context.Context, limit int) (*domain
 
 // GetTopRatedModels retrieves top-rated models
 func (s *ModelSearcher) GetTopRatedModels(ctx context.Context, limit int) (*domain.ModelSearchResponse, error) {
+	// Use basic search with no specific sorting - API doesn't support rating sorting  
 	request := domain.NewModelSearchRequestBuilder().
-		WithPublicOnly().
 		WithPageSize(limit).
-		SortByRating().
-		Descending().
 		Build()
 
 	return s.SearchModels(ctx, request)

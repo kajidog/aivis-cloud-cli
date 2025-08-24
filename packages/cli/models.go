@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kajidog/aiviscloud-mcp/client/models/domain"
+	"github.com/kajidog/aivis-cloud-cli/client/models/domain"
 	"github.com/spf13/cobra"
 )
 
@@ -187,20 +187,31 @@ func outputModels(response *domain.ModelSearchResponse, format string) error {
 		for _, model := range response.Models {
 			fmt.Printf("UUID: %s\n", model.UUID)
 			fmt.Printf("Name: %s\n", model.Name)
-			if model.Author != "" {
+			if model.User != nil && model.User.Name != "" {
+				fmt.Printf("Author: %s\n", model.User.Name)
+			} else if model.Author != "" {
 				fmt.Printf("Author: %s\n", model.Author)
 			}
 			if model.Description != "" {
 				fmt.Printf("Description: %s\n", model.Description)
 			}
 			if len(model.Tags) > 0 {
-				fmt.Printf("Tags: %s\n", strings.Join(model.Tags, ", "))
+				var tagNames []string
+				for _, tag := range model.Tags {
+					tagNames = append(tagNames, tag.Name)
+				}
+				fmt.Printf("Tags: %s\n", strings.Join(tagNames, ", "))
 			}
-			if model.DownloadCount > 0 {
+			if model.TotalDownloadCount > 0 {
+				fmt.Printf("Downloads: %d\n", model.TotalDownloadCount)
+			} else if model.DownloadCount > 0 {
 				fmt.Printf("Downloads: %d\n", model.DownloadCount)
 			}
 			if model.Rating > 0 {
 				fmt.Printf("Rating: %.2f\n", model.Rating)
+			}
+			if model.LikeCount > 0 {
+				fmt.Printf("Likes: %d\n", model.LikeCount)
 			}
 			fmt.Println("---")
 		}
@@ -228,20 +239,31 @@ func outputModel(model *domain.Model, format string) error {
 		fmt.Printf("=============\n")
 		fmt.Printf("UUID: %s\n", model.UUID)
 		fmt.Printf("Name: %s\n", model.Name)
-		if model.Author != "" {
+		if model.User != nil && model.User.Name != "" {
+			fmt.Printf("Author: %s\n", model.User.Name)
+		} else if model.Author != "" {
 			fmt.Printf("Author: %s\n", model.Author)
 		}
 		if model.Description != "" {
 			fmt.Printf("Description: %s\n", model.Description)
 		}
 		if len(model.Tags) > 0 {
-			fmt.Printf("Tags: %s\n", strings.Join(model.Tags, ", "))
+			var tagNames []string
+			for _, tag := range model.Tags {
+				tagNames = append(tagNames, tag.Name)
+			}
+			fmt.Printf("Tags: %s\n", strings.Join(tagNames, ", "))
 		}
-		if model.DownloadCount > 0 {
+		if model.TotalDownloadCount > 0 {
+			fmt.Printf("Downloads: %d\n", model.TotalDownloadCount)
+		} else if model.DownloadCount > 0 {
 			fmt.Printf("Downloads: %d\n", model.DownloadCount)
 		}
 		if model.Rating > 0 {
 			fmt.Printf("Rating: %.2f\n", model.Rating)
+		}
+		if model.LikeCount > 0 {
+			fmt.Printf("Likes: %d\n", model.LikeCount)
 		}
 		if !model.CreatedAt.IsZero() {
 			fmt.Printf("Created: %s\n", model.CreatedAt.Format("2006-01-02 15:04:05"))

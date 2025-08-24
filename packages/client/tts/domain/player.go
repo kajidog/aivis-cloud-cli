@@ -33,6 +33,7 @@ type PlaybackRequest struct {
 	StartOffset  *time.Duration `json:"start_offset,omitempty"` // Start playback from specific position
 	FadeInDuration  *time.Duration `json:"fade_in_duration,omitempty"`
 	FadeOutDuration *time.Duration `json:"fade_out_duration,omitempty"`
+	WaitForEnd   *bool         `json:"wait_for_end,omitempty"`  // Wait for playback completion
 }
 
 // PlaybackConfig represents configuration for audio playback
@@ -133,6 +134,12 @@ func (b *PlaybackRequestBuilder) WithFadeIn(duration time.Duration) *PlaybackReq
 // WithFadeOut sets the fade out duration
 func (b *PlaybackRequestBuilder) WithFadeOut(duration time.Duration) *PlaybackRequestBuilder {
 	b.request.FadeOutDuration = &duration
+	return b
+}
+
+// WithWaitForEnd sets whether to wait for playback completion
+func (b *PlaybackRequestBuilder) WithWaitForEnd(waitForEnd bool) *PlaybackRequestBuilder {
+	b.request.WaitForEnd = &waitForEnd
 	return b
 }
 

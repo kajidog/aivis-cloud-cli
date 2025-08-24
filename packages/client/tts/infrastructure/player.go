@@ -11,12 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kajidog/aiviscloud-mcp/client/tts/domain"
+	"github.com/kajidog/aivis-cloud-cli/client/common/logger"
+	"github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 )
 
 // OSCommandAudioPlayer implements AudioPlayer interface using OS commands
 type OSCommandAudioPlayer struct {
 	config        *domain.PlaybackConfig
+	logger        logger.Logger
 	mu            sync.RWMutex
 	status        domain.PlaybackStatus
 	currentProc   *os.Process
@@ -29,12 +31,21 @@ type OSCommandAudioPlayer struct {
 
 // NewOSCommandAudioPlayer creates a new OS command-based audio player
 func NewOSCommandAudioPlayer(config *domain.PlaybackConfig) *OSCommandAudioPlayer {
+	return NewOSCommandAudioPlayerWithLogger(config, logger.NewNoop())
+}
+
+// NewOSCommandAudioPlayerWithLogger creates a new OS command-based audio player with logger
+func NewOSCommandAudioPlayerWithLogger(config *domain.PlaybackConfig, log logger.Logger) *OSCommandAudioPlayer {
 	if config == nil {
 		config = domain.DefaultPlaybackConfig()
+	}
+	if log == nil {
+		log = logger.NewNoop()
 	}
 	
 	return &OSCommandAudioPlayer{
 		config: config,
+		logger: log,
 		status: domain.PlaybackStatusIdle,
 		volume: config.DefaultVolume,
 	}
@@ -47,10 +58,14 @@ func (p *OSCommandAudioPlayer) getAudioCommand(audioFile string) (string, []stri
 		return "afplay", []string{audioFile}, nil
 		
 	case "windows":
-		// Use PowerShell for Windows - simplified version
-		escapedPath := strings.ReplaceAll(audioFile, `'`, `''`) // Escape single quotes for PowerShell
-		psCommand := fmt.Sprintf("(New-Object Media.SoundPlayer '%s').PlaySync()", escapedPath)
-		return "powershell", []string{"-c", psCommand}, nil
+		// Use PowerShell for Windows - simpler approach based on TypeScript implementation
+		// Escape backslashes and quotes for PowerShell
+		escapedPath := strings.ReplaceAll(audioFile, `\`, `\\`)
+		escapedPath = strings.ReplaceAll(escapedPath, `'`, `''`)
+		
+		// Use MediaPlayer for all formats (more universal)
+		psCommand := fmt.Sprintf(`Add-Type -AssemblyName presentationCore; $player = New-Object system.windows.media.mediaplayer; $player.open('%s'); $player.Volume = 0.5; $player.Play(); Start-Sleep 1; if ($player.NaturalDuration.HasTimeSpan) { Start-Sleep -s $player.NaturalDuration.TimeSpan.TotalSeconds; } else { Start-Sleep 5; }`, escapedPath)
+		return "powershell", []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCommand}, nil
 		
 	case "linux":
 		// Try to find available Linux audio players
@@ -101,11 +116,23 @@ func (p *OSCommandAudioPlayer) createTempAudioFile(audioData io.Reader, format d
 	defer tmpFile.Close()
 	
 	// Copy audio data to file
-	_, err = io.Copy(tmpFile, audioData)
+	bytesWritten, err := io.Copy(tmpFile, audioData)
 	if err != nil {
 		os.Remove(tmpFile.Name())
 		return "", fmt.Errorf("failed to write audio data: %w", err)
 	}
+	
+	// Ensure file is completely written before closing
+	if err := tmpFile.Sync(); err != nil {
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("failed to sync file: %w", err)
+	}
+	
+	// Debug: Log file size
+	p.logger.Debug("Created temporary audio file", 
+		logger.String("file_path", tmpFile.Name()), 
+		logger.Int64("bytes", bytesWritten),
+	)
 	
 	return tmpFile.Name(), nil
 }
@@ -137,9 +164,15 @@ func (p *OSCommandAudioPlayer) Play(ctx context.Context, audioData io.Reader, fo
 	// Start audio playback process
 	cmd := exec.CommandContext(ctx, command, args...)
 	
-	// Configure process options (ignore output)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	// Debug: Log the command being executed
+	p.logger.Debug("Executing audio playback command", 
+		logger.String("command", command), 
+		logger.String("args", fmt.Sprintf("%v", args)),
+	)
+	
+	// Configure process options - capture both stdout and stderr for debugging
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	
 	// Start the process
 	err = cmd.Start()
@@ -147,6 +180,10 @@ func (p *OSCommandAudioPlayer) Play(ctx context.Context, audioData io.Reader, fo
 		os.Remove(audioFile)
 		return fmt.Errorf("failed to start audio playback: %w", err)
 	}
+	
+	p.logger.Debug("Audio playback process started", 
+		logger.Int("pid", cmd.Process.Pid),
+	)
 	
 	p.currentProc = cmd.Process
 	p.status = domain.PlaybackStatusPlaying
@@ -175,8 +212,10 @@ func (p *OSCommandAudioPlayer) Play(ctx context.Context, audioData io.Reader, fo
 		p.mu.Unlock()
 		
 		// 実際の再生時間をログ出力
-		fmt.Printf("Audio playback completed. Estimated: %v, Actual: %v\n", 
-			p.estimatedDuration, actualDuration)
+		p.logger.Info("Audio playback completed", 
+			logger.Duration("estimated_duration", p.estimatedDuration),
+			logger.Duration("actual_duration", actualDuration),
+		)
 	}()
 	
 	return nil
@@ -282,10 +321,7 @@ func (p *OSCommandAudioPlayer) GetStatus() domain.PlaybackInfo {
 	// Calculate current position if playing
 	var position time.Duration
 	if p.status == domain.PlaybackStatusPlaying && !p.startTime.IsZero() {
-		position = time.Since(p.startTime)
-		if position > p.estimatedDuration {
-			position = p.estimatedDuration
-		}
+		position = min(time.Since(p.startTime), p.estimatedDuration)
 	}
 	
 	return domain.PlaybackInfo{

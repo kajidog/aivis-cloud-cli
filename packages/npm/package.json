@@ -1,0 +1,44 @@
+{
+  "name": "@kajidog/aivis-cloud-cli",
+  "version": "0.1.0-2025-08-24-2",
+  "description": "Aivis Cloud CLI - Text-to-speech synthesis and model management",
+  "main": "bin/aivis-cloud-cli.js",
+  "bin": {
+    "aivis-cloud-cli": "bin/aivis-cloud-cli.js"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "postinstall": "node scripts/postinstall.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "tts",
+    "text-to-speech",
+    "cli",
+    "aivis",
+    "speech",
+    "mcp",
+    "mcp-server"
+  ],
+  "author": "kajidog",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "binaries/",
+    "README.md",
+    "../../LICENSE"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

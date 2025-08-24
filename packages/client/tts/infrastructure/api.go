@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/kajidog/aiviscloud-mcp/client/common/http"
-	"github.com/kajidog/aiviscloud-mcp/client/tts/domain"
+	"github.com/kajidog/aivis-cloud-cli/client/common/http"
+	"github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 )
 
 // TTSAPIRepository implements the TTSRepository interface using HTTP API calls
