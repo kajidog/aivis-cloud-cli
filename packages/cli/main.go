@@ -21,7 +21,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "aivis-cli",
+	Use:   "aivis-cloud-cli",
 	Short: "Aivis Cloud CLI - Text-to-speech synthesis and model management",
 	Long: `Aivis Cloud CLI provides command-line interface for Aivis Cloud API.
 Features include text-to-speech synthesis, audio playback, and model management.`,
