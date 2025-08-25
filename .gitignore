@@ -49,6 +49,7 @@ temp/
 
 # Dependencies
 vendor/
+node_modules/
 
 # Build artifacts
 dist/
