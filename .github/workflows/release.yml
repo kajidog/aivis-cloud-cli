@@ -22,8 +22,15 @@ jobs:
 
       - name: Install Root Dependencies
         run: |
-          # Install root dependencies for changesets (simplified)
-          npm install --no-audit
+          # Remove potentially problematic package-lock.json in CI
+          if [ -f package-lock.json ]; then
+            echo "Removing package-lock.json to avoid version conflicts in CI"
+            rm package-lock.json
+          fi
+          
+          # Install dependencies fresh
+          echo "Installing dependencies for changesets..."
+          npm install --no-audit --no-save
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
