@@ -36,8 +36,8 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          # Run changesets from root where config is located
-          publish: cd packages/npm && npm run release
+          # Run changeset publish which will handle the npm publishing
+          publish: npm run release-packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

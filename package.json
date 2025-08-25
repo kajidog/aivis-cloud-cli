@@ -8,7 +8,8 @@
   "scripts": {
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "changeset publish"
+    "release": "changeset publish",
+    "release-packages": "cd packages/npm && npm run build && cd ../.. && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.6"
