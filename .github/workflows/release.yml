@@ -28,9 +28,9 @@ jobs:
             rm package-lock.json
           fi
           
-          # Install dependencies fresh
+          # Install dependencies fresh (skip postinstall scripts)
           echo "Installing dependencies for changesets..."
-          npm install --no-audit --no-save
+          npm install --no-audit --no-save --ignore-scripts
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
