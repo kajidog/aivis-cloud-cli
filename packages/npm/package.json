@@ -1,6 +1,6 @@
 {
   "name": "@kajidog/aivis-cloud-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Aivis Cloud CLI - Text-to-speech synthesis and model management",
   "main": "bin/aivis-cloud-cli.js",
   "bin": {
@@ -12,7 +12,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "npm run build && changeset publish"
+    "release": "npm run build"
   },
   "keywords": [
     "tts",

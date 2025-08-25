@@ -20,16 +20,31 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Dependencies
-        run: cd packages/npm && npm ci
+      - name: Setup npm authentication
+        run: |
+          # Create .npmrc for authentication
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+          echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install Dependencies 
+        run: |
+          # Remove problematic package-lock.json that causes "Invalid Version" errors
+          if [ -f package-lock.json ]; then
+            echo "Removing problematic package-lock.json"
+            rm package-lock.json
+          fi
+          
+          echo "Installing dependencies fresh"
+          npm install --ignore-scripts
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
         with:
-          # This expects you to have a script called release which does a build for your packages and calls changeset publish
-          publish: npm run release
-          cwd: packages/npm
+          # Run changeset publish which will handle the npm publishing
+          publish: npm run release-packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
