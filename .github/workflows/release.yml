@@ -20,17 +20,24 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Root Dependencies
+      - name: Setup npm authentication
         run: |
-          # Remove potentially problematic package-lock.json in CI
+          # Create .npmrc for authentication
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+          echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install Dependencies with Cache
+        run: |
+          # Use npm ci if package-lock.json exists, otherwise install
           if [ -f package-lock.json ]; then
-            echo "Removing package-lock.json to avoid version conflicts in CI"
-            rm package-lock.json
+            echo "Using npm ci with existing package-lock.json"
+            npm ci --ignore-scripts
+          else
+            echo "Installing dependencies fresh"
+            npm install --ignore-scripts
           fi
-          
-          # Install dependencies fresh (skip postinstall scripts)
-          echo "Installing dependencies for changesets..."
-          npm install --no-audit --no-save --ignore-scripts
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
