@@ -28,16 +28,16 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Install Dependencies with Cache
+      - name: Install Dependencies 
         run: |
-          # Use npm ci if package-lock.json exists, otherwise install
+          # Remove problematic package-lock.json that causes "Invalid Version" errors
           if [ -f package-lock.json ]; then
-            echo "Using npm ci with existing package-lock.json"
-            npm ci --ignore-scripts
-          else
-            echo "Installing dependencies fresh"
-            npm install --ignore-scripts
+            echo "Removing problematic package-lock.json"
+            rm package-lock.json
           fi
+          
+          echo "Installing dependencies fresh"
+          npm install --ignore-scripts
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets

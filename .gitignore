@@ -57,4 +57,4 @@ build/
 packages/cli/cli
 api-test.http
 .mcp.json
-**/node_modules
+**/node_modulespackage-lock.json
