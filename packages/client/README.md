@@ -25,7 +25,9 @@ go get github.com/kajidog/aivis-cloud-cli/client
 ```bash
 cd packages/client
 go mod tidy
-go test ./...
+go test ./...           # テスト実行
+go test -v              # 詳細なテスト実行
+go test -cover          # カバレッジ付きテスト実行
 go build -v ./...
 ```
 
@@ -66,6 +68,48 @@ func main() {
     if err != nil {
         panic(err)
     }
+}
+```
+
+## テスト
+
+このライブラリには包括的なテストスイートが含まれています：
+
+### テスト実行
+
+```bash
+# 全テスト実行
+go test -v
+
+# カバレッジ付き実行
+go test -cover
+
+# 特定のテスト実行
+go test -v -run TestSearchPublicModels
+```
+
+### テストの特徴
+
+- **Mock HTTP Server**: 実APIに依存せずテスト実行
+- **Table-driven Tests**: 複数のシナリオを効率的にテスト
+- **Error Handling**: 4xx/5xx エラーレスポンステスト
+- **Builder Pattern**: TTS リクエストビルダーのテスト
+
+### テスト例
+
+```go
+func TestSearchPublicModels(t *testing.T) {
+    // Mock server setup
+    handler := func(w http.ResponseWriter, r *http.Request) {
+        response := `{"models": [{"uuid": "test-uuid", "name": "test-model"}], "total": 1}`
+        w.Write([]byte(response))
+    }
+    
+    client, teardown := setupTestClient(t, handler)
+    defer teardown()
+    
+    resp, err := client.SearchPublicModels(context.Background(), "test")
+    // テスト assertions...
 }
 ```
 

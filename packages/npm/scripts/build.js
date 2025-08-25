@@ -65,6 +65,29 @@ function main() {
     process.exit(1);
   }
 
+  // Resolve dependencies once at the start
+  console.log('Resolving Go dependencies...');
+  try {
+    // First, ensure go.sum is up to date
+    execSync('go mod tidy', {
+      cwd: cliDir,
+      stdio: 'inherit'
+    });
+    console.log('✓ go mod tidy completed');
+    
+    // Then download all dependencies
+    execSync('go mod download', {
+      cwd: cliDir,
+      stdio: 'inherit'
+    });
+    console.log('✓ Dependencies downloaded successfully');
+  } catch (error) {
+    console.error('✗ Failed to resolve Go dependencies:', error.message);
+    console.error('This might be due to network issues or missing dependencies.');
+    console.error('Please ensure you have internet access and all Go modules are accessible.');
+    process.exit(1);
+  }
+
   // Clean existing binaries directory
   if (fs.existsSync(binariesDir)) {
     console.log('Cleaning existing binaries...');

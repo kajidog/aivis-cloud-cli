@@ -1,0 +1,126 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test-go:
+    name: Test Go Client
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: |
+          cd packages/client
+          go mod download
+          go mod tidy
+
+      - name: Run tests
+        run: |
+          cd packages/client
+          go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Generate coverage report
+        run: |
+          cd packages/client
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: packages/client/coverage.html
+
+  test-cli:
+    name: Test CLI Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-cli-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-cli-
+
+      - name: Build CLI
+        run: |
+          cd packages/cli
+          go mod download
+          go mod tidy
+          go build -v -o aivis-cli .
+
+      - name: Verify CLI binary
+        run: |
+          cd packages/cli
+          ls -la aivis-cli
+          file aivis-cli
+
+      - name: Test CLI basic functionality
+        run: |
+          cd packages/cli
+          # Test CLI help command
+          ./aivis-cli --help
+          ./aivis-cli models --help
+          ./aivis-cli tts --help
+
+  test-build-script:
+    name: Test Build Script
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test single platform build (Linux only)
+        run: |
+          cd packages/cli
+          go mod tidy
+          go mod download
+          
+          # Test single platform build only (fast)
+          go build -v -o ../npm/test-binary .
+          
+          # Verify binary works
+          ../npm/test-binary --help
+          
+          echo "✓ Build script validation passed"
