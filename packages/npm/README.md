@@ -182,11 +182,14 @@ npx @kajidog/aivis-cloud-cli config show
 # 設定ファイルにAPIキーを保存（推奨）
 npx @kajidog/aivis-cloud-cli config set api_key "your-api-key"
 
-# HTTPモードでMCPサーバーを起動（デフォルトポート: 8080）
+# MCPサーバーを起動（stdio デフォルト）
 npx @kajidog/aivis-cloud-cli mcp
 
-# カスタムポートで起動
-npx @kajidog/aivis-cloud-cli mcp --port 3000
+# HTTPモードで起動（デフォルトポート8080）
+npx @kajidog/aivis-cloud-cli mcp --transport http
+
+# HTTPモードでカスタムポート
+npx @kajidog/aivis-cloud-cli mcp --transport http --port 3000
 ```
 
 </details>
@@ -198,6 +201,22 @@ npx @kajidog/aivis-cloud-cli mcp --port 3000
 
 Claude Desktop の設定ファイル（`~/Library/Application Support/Claude/claude_desktop_config.json`）に以下を追加：
 
+**stdio モード（推奨）:**
+```json
+{
+  "mcpServers": {
+    "aivis-cloud-api": {
+      "command": "npx",
+      "args": ["@kajidog/aivis-cloud-cli", "mcp"],
+      "env": {
+        "AIVIS_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+**HTTP モード（リモートアクセス用、デフォルトポート8080）:**
 ```json
 {
   "mcpServers": {
@@ -213,11 +232,18 @@ Claude Desktop の設定ファイル（`~/Library/Application Support/Claude/cla
 
 Claude Code CLI を使用している場合は、以下のコマンドで追加できます：
 
+**stdio モード（推奨）:**
 ```bash
-# MCP サーバーを追加（デフォルトポート 8080 の場合）
+# MCP サーバーを追加（stdio）
+claude mcp add aivis npx @kajidog/aivis-cloud-cli mcp
+```
+
+**HTTP モード（リモートアクセス用）:**
+```bash
+# MCP サーバーを追加（デフォルトポート8080）
 claude mcp add --transport http aivis http://localhost:8080
 
-# カスタムポート 3000 の場合
+# カスタムポートの場合
 claude mcp add --transport http aivis http://localhost:3000
 ```
 
