@@ -8,7 +8,7 @@ Aivis Cloud API を使用した音声合成・音声再生のコマンドライ�
 
 **詳細な機能説明・使用例・MCP設定などは [npm パッケージのREADME](./packages/npm/README.md) をご確認ください。**
 
-### インストール・実行
+### インストール・セットアップ
 
 ```bash
 # インストール不要で直接実行（推奨）
@@ -16,9 +16,6 @@ npx @kajidog/aivis-cloud-cli --help
 
 # API キー設定
 npx @kajidog/aivis-cloud-cli config set api_key "your-api-key"
-
-# 音声合成・再生
-npx @kajidog/aivis-cloud-cli tts play --text "こんにちは世界"
 ```
 
 ## パッケージ構成
@@ -26,10 +23,21 @@ npx @kajidog/aivis-cloud-cli tts play --text "こんにちは世界"
 ### [packages/npm/](./packages/npm/) - **メインパッケージ**
 npm で配布される CLI ツール。**機能詳細・使用例・MCP設定はこちら**
 
+使用例:
+```bash
+# 例1: テキストから音声ファイルを生成
+npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.wav"
+
+# 例2: Claude CodeにMCPを登録
+claude mcp add aivis npx @kajidog/aivis-cloud-cli mcp
+```
+
 ### [packages/cli/](./packages/cli/) - Go版CLI
 開発者向け。Go での直接ビルド・実行用
 
-### [packages/client/](./packages/client/) - Goライブラリ  
+**ビルド済みのバイナリ (Windows, macOS, Linux) は [GitHub Releases](https://github.com/kajidog/aivis-cloud-cli/releases) からダウンロードできます。**
+
+### [packages/client/](./packages/client/) - Goライブラリ
 他のアプリケーション組み込み用のGoクライアントライブラリ
 
 ## 開発者向け
