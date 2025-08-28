@@ -41,6 +41,7 @@ The CLI (`packages/cli/`) is built using Cobra and provides:
 - **Configuration Management**: Viper-based config with YAML files and environment variables
 - **Global Client**: Shared `aivisClient` instance across all commands
 - **MCP Server**: Model Context Protocol server with stdio and HTTP transports
+- **Automatic Log Redirection**: stdio MCP mode automatically redirects logs to stderr to prevent protocol contamination
 
 ### Key Design Patterns
 
@@ -445,11 +446,13 @@ For HTTP mode (if needed):
 # Search models (returns 5 results by default)
 search_models({"query": "female voice", "limit": 3})
 
-# Get specific model info
+# Get model info (uses default model if uuid not specified)
 get_model({"uuid": "a59cb814-0083-4369-8542-f51a29e72af7"})
+get_model({})  # Uses default_model_uuid from config or fallback
 
-# Get model speakers
+# Get model speakers (uses default model if uuid not specified)
 get_model_speakers({"uuid": "a59cb814-0083-4369-8542-f51a29e72af7"})
+get_model_speakers({})  # Uses default_model_uuid from config or fallback
 ```
 
 ## Development Workflow
@@ -465,11 +468,28 @@ When working in this codebase:
 
 ### Important Files
 
-- `packages/cli/main.go`: CLI entry point with Cobra command setup
+- `packages/cli/main.go`: CLI entry point with Cobra command setup and automatic log redirection for MCP stdio mode
 - `packages/cli/mcp_server.go`: MCP server implementation with stdio/HTTP transports  
 - `packages/cli/mcp_tools_*.go`: Individual MCP tool implementations
 - `packages/client/client.go`: Main client facade combining all functionality
 - `packages/client/config/config.go`: Configuration management with validation
+
+### MCP stdio Mode Implementation Details
+
+**Log Output Handling**: The `isMCPStdioMode()` function in `main.go` automatically detects when the MCP command is running in stdio mode and forces log output to `stderr`. This prevents contamination of the stdout stream which is used for MCP protocol communication.
+
+**Protocol Isolation**: 
+- stdio mode: All logs → stderr, stdin/stdout reserved for MCP protocol
+- HTTP mode: Normal log output behavior (respects log_output config)
+
+**Command Detection Logic**:
+```go
+// Checks if running "aivis-cli mcp" without --transport http
+func isMCPStdioMode() bool {
+    // Detects: ./aivis-cli mcp, ./aivis-cli mcp --transport stdio
+    // Excludes: ./aivis-cli mcp --transport http
+}
+```
 
 ### Go Version Requirements
 

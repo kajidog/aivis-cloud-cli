@@ -22,6 +22,9 @@ Supports both stdio (default) and HTTP transports for maximum compatibility.`,
 		transport, _ := cmd.Flags().GetString("transport")
 		port, _ := cmd.Flags().GetInt("port")
 
+		// For stdio mode, logs are automatically redirected to stderr in main.go
+		// to avoid protocol contamination on stdout
+
 		// Create MCP server
 		server := CreateMCPServer()
 

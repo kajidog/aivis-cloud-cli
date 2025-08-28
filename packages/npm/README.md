@@ -216,7 +216,19 @@ Claude Desktop の設定ファイル（`~/Library/Application Support/Claude/cla
 }
 ```
 
-**HTTP モード（リモートアクセス用、デフォルトポート8080）:**
+- **Claude Desktop が自動的にMCPサーバーを起動・管理**
+- **API キーが設定済みの場合**: `env` セクションは省略可能（設定ファイルまたは環境変数から読み込み）
+- **プロセス管理不要**: Claude Desktop終了時に自動停止
+
+**HTTP モード（リモートアクセス・デバッグ用）:**
+
+まず、MCPサーバーを別途起動しておく必要があります：
+```bash
+# ターミナルでMCPサーバーを起動（常時実行）
+npx @kajidog/aivis-cloud-cli mcp --transport http --port 8080
+```
+
+次に、Claude Desktop設定：
 ```json
 {
   "mcpServers": {
@@ -228,6 +240,9 @@ Claude Desktop の設定ファイル（`~/Library/Application Support/Claude/cla
 }
 ```
 
+- **事前にサーバー起動が必要**: 上記のコマンドを実行し続ける必要があります
+- **デバッグやリモート接続に有用**: 複数のクライアントから接続可能
+
 ### Claude Code CLI
 
 Claude Code CLI を使用している場合は、以下のコマンドで追加できます：
@@ -238,7 +253,19 @@ Claude Code CLI を使用している場合は、以下のコマンドで追加�
 claude mcp add aivis npx @kajidog/aivis-cloud-cli mcp
 ```
 
-**HTTP モード（リモートアクセス用）:**
+- **Claude Code が自動的にMCPサーバーを起動・管理**
+- **API キーが設定済みの場合**: 環境変数 `AIVIS_API_KEY` または設定ファイルから自動読み込み
+- **プロセス管理不要**: Claude Code終了時に自動停止
+
+**HTTP モード（リモートアクセス・デバッグ用）:**
+
+まず、MCPサーバーを別途起動しておく必要があります：
+```bash
+# ターミナルでMCPサーバーを起動（常時実行）
+npx @kajidog/aivis-cloud-cli mcp --transport http --port 8080
+```
+
+次に、Claude Code に追加：
 ```bash
 # MCP サーバーを追加（デフォルトポート8080）
 claude mcp add --transport http aivis http://localhost:8080
@@ -246,6 +273,9 @@ claude mcp add --transport http aivis http://localhost:8080
 # カスタムポートの場合
 claude mcp add --transport http aivis http://localhost:3000
 ```
+
+- **事前にサーバー起動が必要**: 上記のコマンドでサーバーを実行し続ける必要があります  
+- **デバッグやリモート接続に有用**: 複数のClaude Codeセッションから同じサーバーに接続可能
 
 </details>
 
@@ -260,12 +290,12 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 
   - パラメータ: `query`, `author`, `tags`, `limit`, `sort`, `public_only`
 
-- **get_model**: 特定モデルの基本情報取得
+- **get_model**: モデルの基本情報取得
 
-  - パラメータ: `uuid` (必須)
+  - パラメータ: `uuid` (省略時は設定ファイルの `default_model_uuid` またはフォールバックモデルを使用)
 
 - **get_model_speakers**: モデルのスピーカー情報取得
-  - パラメータ: `uuid` (必須)
+  - パラメータ: `uuid` (省略時は設定ファイルの `default_model_uuid` またはフォールバックモデルを使用)
 
 **音声合成・再生関連:**
 
@@ -317,6 +347,44 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 | `log_level`                | string  | `INFO`                          | ログレベル（DEBUG, INFO, WARN, ERROR）     |
 | `log_output`               | string  | `stdout`                        | ログ出力先（stdout, stderr, ファイルパス） |
 | `log_format`               | string  | `text`                          | ログ形式（text, json）                     |
+
+### 設定の優先度
+
+設定値は以下の優先順位で適用されます（上位が優先）:
+
+1. **コマンドラインフラグ** - `--api-key`, `--log-level` など
+2. **環境変数** - `AIVIS_API_KEY`, `AIVIS_LOG_LEVEL` など  
+3. **設定ファイル** - `~/.aivis-cli.yaml` の記載値
+
+```bash
+# 例：ログレベルの優先順位
+npx @kajidog/aivis-cloud-cli --log-level DEBUG mcp  # 1. フラグ（最優先）
+export AIVIS_LOG_LEVEL=INFO                         # 2. 環境変数
+# ~/.aivis-cli.yaml: log_level: WARN                # 3. 設定ファイル
+```
+
+**環境変数の命名規則**: 設定名の前に `AIVIS_` を付け、大文字に変換します
+- `api_key` → `AIVIS_API_KEY`
+- `log_level` → `AIVIS_LOG_LEVEL`
+- `default_model_uuid` → `AIVIS_DEFAULT_MODEL_UUID`
+
+### ⚠️ MCP サーバー使用時の重要な注意点
+
+#### stdio モード使用時のログ出力
+
+**stdio モード**（デフォルト）では、標準入出力がMCPプロトコル通信に使用されるため、ログ出力が自動的に`stderr`にリダイレクトされます。
+
+```bash
+# stdio モード：ログ出力は自動的に stderr に変更されます
+npx @kajidog/aivis-cloud-cli mcp
+# → log_output が自動的に "stderr" に設定される
+
+# HTTP モード：通常どおり stdout にログ出力
+npx @kajidog/aivis-cloud-cli mcp --transport http
+# → log_output の設定が適用される
+```
+
+これにより、Claude Desktop や他の MCP クライアントとの通信が正常に行われます。
 
 </details>
 
