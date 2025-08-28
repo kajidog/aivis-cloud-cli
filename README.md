@@ -1,5 +1,7 @@
 # Aivis Cloud CLI
 
+[![Test](https://github.com/kajidog/aivis-cloud-cli/actions/workflows/test.yml/badge.svg)](https://github.com/kajidog/aivis-cloud-cli/actions/workflows/test.yml) [![NPM Version](https://img.shields.io/npm/v/@kajidog/aivis-cloud-cli.svg)](https://www.npmjs.com/package/@kajidog/aivis-cloud-cli) [![License](https://img.shields.io/github/license/kajidog/aivis-cloud-cli.svg)](https://github.com/kajidog/aivis-cloud-cli/blob/main/LICENSE) [![Go Report Card](https://goreportcard.com/badge/github.com/kajidog/aivis-cloud-cli/packages/client)](https://goreportcard.com/report/github.com/kajidog/aivis-cloud-cli/packages/client) [![Go Version](https://img.shields.io/badge/go-1.21-blue.svg)](https://go.dev/dl/) [![GitHub release](https://img.shields.io/github/v/release/kajidog/aivis-cloud-cli)](https://github.com/kajidog/aivis-cloud-cli/releases/latest)
+
 Aivis Cloud API を使用した音声合成・音声再生のコマンドラインツールです。
 
 **公式サイト**: https://aivis-project.com/
