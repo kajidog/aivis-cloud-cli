@@ -7,6 +7,7 @@ import (
 
 	"github.com/kajidog/aivis-cloud-cli/client/models/domain"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/spf13/viper"
 )
 
 // SearchModelsParams parameters for search_models tool
@@ -21,12 +22,23 @@ type SearchModelsParams struct {
 
 // GetModelParams parameters for get_model tool
 type GetModelParams struct {
-	UUID string `json:"uuid"`
+	UUID string `json:"uuid,omitempty"`
 }
 
 // GetModelSpeakersParams parameters for get_model_speakers tool
 type GetModelSpeakersParams struct {
-	UUID string `json:"uuid"`
+	UUID string `json:"uuid,omitempty"`
+}
+
+// getDefaultModelUUID returns the default model UUID from config or fallback
+func getDefaultModelUUID() string {
+	// Try to get from config first
+	if defaultUUID := viper.GetString("default_model_uuid"); defaultUUID != "" {
+		return defaultUUID
+	}
+	
+	// Use fallback UUID
+	return "a59cb814-0083-4369-8542-f51a29e72af7"
 }
 
 // RegisterModelsTools registers all model-related MCP tools
@@ -40,18 +52,17 @@ func RegisterModelsTools(server *mcp.Server) {
 	// Add get model tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_model",
-		Description: "Get essential information about a specific voice model (minimal token usage)",
+		Description: "Get essential information about a voice model (uses default model if uuid not specified)",
 	}, handleGetModel)
 
 	// Add get model speakers tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_model_speakers",
-		Description: "Get speaker list for a voice model (compact format with language and style counts)",
+		Description: "Get speaker list for a voice model (uses default model if uuid not specified)",
 	}, handleGetModelSpeakers)
 }
 
-func handleSearchModels(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[SearchModelsParams]) (*mcp.CallToolResultFor[any], error) {
-	args := params.Arguments
+func handleSearchModels(ctx context.Context, req *mcp.CallToolRequest, args SearchModelsParams) (*mcp.CallToolResult, any, error) {
 	
 	// Use existing client to perform search
 	var response *domain.ModelSearchResponse
@@ -106,72 +117,68 @@ func handleSearchModels(ctx context.Context, session *mcp.ServerSession, params 
 	}
 
 	if err != nil {
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Search failed: %v", err)}},
 			IsError: true,
-		}, nil
+		}, nil, nil
 	}
 
 	// Format response for MCP
 	resultText := formatSearchResponse(response)
 	
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
-	}, nil
+	}, nil, nil
 }
 
-func handleGetModel(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[GetModelParams]) (*mcp.CallToolResultFor[any], error) {
-	args := params.Arguments
+func handleGetModel(ctx context.Context, req *mcp.CallToolRequest, args GetModelParams) (*mcp.CallToolResult, any, error) {
 	
-	if args.UUID == "" {
-		return &mcp.CallToolResultFor[any]{
-			Content: []mcp.Content{&mcp.TextContent{Text: "UUID is required"}},
-			IsError: true,
-		}, nil
+	// Use default UUID if not provided
+	uuid := args.UUID
+	if uuid == "" {
+		uuid = getDefaultModelUUID()
 	}
 
 	// Get model details
-	model, err := aivisClient.GetModel(ctx, args.UUID)
+	model, err := aivisClient.GetModel(ctx, uuid)
 	if err != nil {
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get model: %v", err)}},
 			IsError: true,
-		}, nil
+		}, nil, nil
 	}
 
 	// Format response for MCP
 	resultText := formatModelResponse(model)
 	
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
-	}, nil
+	}, nil, nil
 }
 
-func handleGetModelSpeakers(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[GetModelSpeakersParams]) (*mcp.CallToolResultFor[any], error) {
-	args := params.Arguments
+func handleGetModelSpeakers(ctx context.Context, req *mcp.CallToolRequest, args GetModelSpeakersParams) (*mcp.CallToolResult, any, error) {
 	
-	if args.UUID == "" {
-		return &mcp.CallToolResultFor[any]{
-			Content: []mcp.Content{&mcp.TextContent{Text: "UUID is required"}},
-			IsError: true,
-		}, nil
+	// Use default UUID if not provided
+	uuid := args.UUID
+	if uuid == "" {
+		uuid = getDefaultModelUUID()
 	}
 
 	// Get model speakers
-	speakers, err := aivisClient.GetModelSpeakers(ctx, args.UUID)
+	speakers, err := aivisClient.GetModelSpeakers(ctx, uuid)
 	if err != nil {
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get model speakers: %v", err)}},
 			IsError: true,
-		}, nil
+		}, nil, nil
 	}
 
 	// Format response for MCP
 	resultText := formatSpeakersResponse(speakers)
 	
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
-	}, nil
+	}, nil, nil
 }
 
 func formatSearchResponse(response *domain.ModelSearchResponse) string {

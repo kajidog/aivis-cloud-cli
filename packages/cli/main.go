@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/kajidog/aivis-cloud-cli/client"
 	"github.com/kajidog/aivis-cloud-cli/client/config"
@@ -112,6 +113,11 @@ func initializeClient() error {
 		cfg.LogFormat = configLogFormat
 	}
 
+	// For MCP stdio mode, force log output to stderr to avoid protocol contamination
+	if isMCPStdioMode() {
+		cfg.LogOutput = "stderr"
+	}
+
 	var err error
 	aivisClient, err = client.NewWithConfig(cfg)
 	if err != nil {
@@ -122,6 +128,27 @@ func initializeClient() error {
 	SetClient(aivisClient)
 
 	return nil
+}
+
+// isMCPStdioMode checks if the current command is MCP with stdio transport
+func isMCPStdioMode() bool {
+	// Check if we're running the mcp command
+	if len(os.Args) < 2 || os.Args[1] != "mcp" {
+		return false
+	}
+	
+	// Check if transport is stdio (default) or explicitly set to stdio
+	for i, arg := range os.Args {
+		if arg == "--transport" && i+1 < len(os.Args) {
+			return os.Args[i+1] == "stdio"
+		}
+		if strings.HasPrefix(arg, "--transport=") {
+			return strings.TrimPrefix(arg, "--transport=") == "stdio"
+		}
+	}
+	
+	// Default is stdio for mcp command
+	return true
 }
 
 func main() {

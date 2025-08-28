@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a monorepo containing an Aivis Cloud API Golang client library. The project implements a clean architecture pattern with feature-based organization rather than traditional layered structure.
+This is a monorepo containing an Aivis Cloud API Golang client library and CLI tool. The project implements a clean architecture pattern with feature-based organization rather than traditional layered structure.
+
+### Components
+
+- **Client Library** (`packages/client/`): Go SDK for integrating Aivis Cloud API functionality into applications
+- **CLI Tool** (`packages/cli/`): Command-line interface built on top of the client library, including MCP server support
+- **NPM Package** (`packages/npm/`): NPM wrapper that distributes pre-built CLI binaries
 
 ## Architecture
 
@@ -22,8 +28,20 @@ Instead of grouping by technical layers, code is organized by business features:
 
 - **TTS** (`tts/`): Text-to-speech synthesis and audio playback functionality
 - **Models** (`models/`): Model search and discovery functionality
-- **Common** (`common/`): Shared utilities (HTTP client, error handling)
+- **Users** (`users/`): User account and profile management
+- **Payment** (`payment/`): Billing and payment information
+- **Common** (`common/`): Shared utilities (HTTP client, error handling, logging)
 - **Config** (`config/`): Configuration management
+
+### CLI Architecture
+
+The CLI (`packages/cli/`) is built using Cobra and provides:
+
+- **Command Structure**: Organized into subcommands (`tts`, `models`, `config`, `users`, `payment`, `mcp`)
+- **Configuration Management**: Viper-based config with YAML files and environment variables
+- **Global Client**: Shared `aivisClient` instance across all commands
+- **MCP Server**: Model Context Protocol server with stdio and HTTP transports
+- **Automatic Log Redirection**: stdio MCP mode automatically redirects logs to stderr to prevent protocol contamination
 
 ### Key Design Patterns
 
@@ -45,18 +63,55 @@ request := client.NewTTSRequest("model-uuid", "text").
 
 ## Common Commands
 
-### Building
+### Repository Structure
 
-```bash
-cd packages/client
-go build -v ./...
-```
+This is a monorepo with the following structure:
+- `packages/client/` - Go client library
+- `packages/cli/` - Go CLI application  
+- `packages/npm/` - NPM package that wraps the CLI binary
 
-### Dependencies
+### Building Client Library
 
 ```bash
 cd packages/client
 go mod tidy
+go build -v ./...
+```
+
+### Building CLI
+
+```bash
+cd packages/cli
+go mod tidy
+go build -o aivis-cli
+```
+
+### Cross-platform CLI Build
+
+```bash
+cd packages/cli
+# macOS (Intel)
+GOOS=darwin GOARCH=amd64 go build -o aivis-cli-darwin-amd64
+# macOS (Apple Silicon) 
+GOOS=darwin GOARCH=arm64 go build -o aivis-cli-darwin-arm64
+# Windows
+GOOS=windows GOARCH=amd64 go build -o aivis-cli-windows-amd64.exe
+# Linux
+GOOS=linux GOARCH=amd64 go build -o aivis-cli-linux-amd64
+```
+
+### Testing
+
+```bash
+# Test client library
+cd packages/client && go test -v
+cd packages/client && go test -cover
+
+# Test specific functionality
+cd packages/client && go test -v -run TestSearchPublicModels
+
+# Test CLI (includes client library tests)
+cd packages/cli && go test -v
 ```
 
 ### Running Examples
@@ -66,11 +121,14 @@ cd packages/client/example
 go run main.go
 ```
 
-### Module Information
+### Module Paths
 
 ```bash
-# The module path is:
+# Client library module:
 github.com/kajidog/aivis-cloud-cli/client
+
+# CLI module:
+github.com/kajidog/aivis-cloud-cli/cli
 ```
 
 ## API Integration
@@ -293,12 +351,18 @@ export AIVIS_API_KEY=your_api_key
 ./aivis-cli models search --limit 5
 ./aivis-cli tts synthesize "こんにちは" model-uuid output.wav
 
+# MCP server (stdio default)
+./aivis-cli mcp
+
+# MCP server with HTTP (for remote access)
+./aivis-cli mcp --transport http --port 8080
+
 # With logging configuration
 ./aivis-cli --log-level=DEBUG --log-format=json models search "voice" --limit 3
 ./aivis-cli -v --log-output=/tmp/aivis.log tts synthesize "テスト" model-uuid test.wav
 
 # Configuration file logging setup (~/.aivis-cli.yaml)
-# log_level: "DEBUG"
+# log_level: "DEBUG"  
 # log_output: "/var/log/aivis.log"
 # log_format: "json"
 ```
@@ -310,12 +374,15 @@ The CLI includes an MCP server that provides AI assistants access to AivisCloud 
 #### Starting MCP Server
 
 ```bash
-# HTTP mode (default and only supported) - stdio temporarily disabled due to SDK bug
+# Stdio mode (default and recommended)
 export AIVIS_API_KEY=your_api_key
-./aivis-cli mcp --port 8080
+./aivis-cli mcp
 
-# Custom port
-./aivis-cli mcp --port 3000
+# HTTP mode (for testing or remote access)
+./aivis-cli mcp --transport http --port 8080
+
+# Custom port for HTTP
+./aivis-cli mcp --transport http --port 3000
 ```
 
 #### Claude Desktop Integration
@@ -326,8 +393,24 @@ Configure Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_c
 {
   "mcpServers": {
     "aivis-cloud-api": {
+      "command": "/path/to/aivis-cli",
+      "args": ["mcp"],
+      "env": {
+        "AIVIS_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+For HTTP mode (if needed):
+
+```json
+{
+  "mcpServers": {
+    "aivis-cloud-api": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:3000"]
+      "args": ["-y", "mcp-remote", "http://localhost:8080"]
     }
   }
 }
@@ -355,7 +438,7 @@ Configure Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_c
 - **API Integration**: Uses existing `aivisClient` for all operations
 - **Authentication**: Leverages existing API key management (environment variables, config files)
 - **Token Efficiency**: Optimized output format to minimize LLM token consumption
-- **Transport Support**: HTTP only (stdio temporarily disabled due to MCP Go SDK v0.2.0 bug)
+- **Transport Support**: Both stdio (default) and HTTP transports supported
 
 #### MCP Tool Examples
 
@@ -363,9 +446,56 @@ Configure Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_c
 # Search models (returns 5 results by default)
 search_models({"query": "female voice", "limit": 3})
 
-# Get specific model info
+# Get model info (uses default model if uuid not specified)
 get_model({"uuid": "a59cb814-0083-4369-8542-f51a29e72af7"})
+get_model({})  # Uses default_model_uuid from config or fallback
 
-# Get model speakers
+# Get model speakers (uses default model if uuid not specified)
 get_model_speakers({"uuid": "a59cb814-0083-4369-8542-f51a29e72af7"})
+get_model_speakers({})  # Uses default_model_uuid from config or fallback
 ```
+
+## Development Workflow
+
+### Making Changes
+
+When working in this codebase:
+
+1. **Client Library Changes**: Make changes in `packages/client/`, run tests with `go test -v`
+2. **CLI Changes**: Make changes in `packages/cli/`, test by building and running commands
+3. **MCP Changes**: Update MCP tools in `mcp_tools_*.go`, test with `./aivis-cli mcp` (stdio default) or `./aivis-cli mcp --transport http --port 8080` for HTTP testing 
+4. **Cross-package Changes**: Remember that CLI depends on client library via `replace` directive in `go.mod`
+
+### Important Files
+
+- `packages/cli/main.go`: CLI entry point with Cobra command setup and automatic log redirection for MCP stdio mode
+- `packages/cli/mcp_server.go`: MCP server implementation with stdio/HTTP transports  
+- `packages/cli/mcp_tools_*.go`: Individual MCP tool implementations
+- `packages/client/client.go`: Main client facade combining all functionality
+- `packages/client/config/config.go`: Configuration management with validation
+
+### MCP stdio Mode Implementation Details
+
+**Log Output Handling**: The `isMCPStdioMode()` function in `main.go` automatically detects when the MCP command is running in stdio mode and forces log output to `stderr`. This prevents contamination of the stdout stream which is used for MCP protocol communication.
+
+**Protocol Isolation**: 
+- stdio mode: All logs → stderr, stdin/stdout reserved for MCP protocol
+- HTTP mode: Normal log output behavior (respects log_output config)
+
+**Command Detection Logic**:
+```go
+// Checks if running "aivis-cli mcp" without --transport http
+func isMCPStdioMode() bool {
+    // Detects: ./aivis-cli mcp, ./aivis-cli mcp --transport stdio
+    // Excludes: ./aivis-cli mcp --transport http
+}
+```
+
+### Go Version Requirements
+
+- Client library: Go 1.21+
+- CLI: Go 1.23+ (required for MCP SDK)
+
+### Testing Strategy
+
+The client library includes comprehensive tests with mock HTTP servers. CLI testing is primarily integration-based through the built binary.
