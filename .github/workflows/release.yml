@@ -60,6 +60,12 @@ jobs:
         run: |
           cd packages/npm
           npm run build
+          
+      - name: List built binaries for debugging
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          echo "Checking built binaries..."
+          find packages/npm/binaries -name "aivis-cli*" -ls || echo "No binaries found"
 
       - name: Create GitHub Release with binaries
         if: steps.changesets.outputs.published == 'true'
@@ -81,12 +87,6 @@ jobs:
             
             ### Direct binary download
             Download the appropriate binary for your platform from the assets below and add it to your PATH.
-          files: |
-            packages/npm/binaries/linux-amd64/aivis-cli
-            packages/npm/binaries/linux-arm64/aivis-cli
-            packages/npm/binaries/darwin-amd64/aivis-cli
-            packages/npm/binaries/darwin-arm64/aivis-cli
-            packages/npm/binaries/windows-amd64/aivis-cli.exe
-            packages/npm/binaries/windows-arm64/aivis-cli.exe
+          files: packages/npm/binaries/*/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
