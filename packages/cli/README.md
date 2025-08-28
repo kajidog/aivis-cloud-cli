@@ -78,3 +78,55 @@ Aivis Cloud API キーが必要です。
 | `log_level`                | string  | `INFO`                          | ログレベル（DEBUG, INFO, WARN, ERROR）     |
 | `log_output`               | string  | `stdout`                        | ログ出力先（stdout, stderr, ファイルパス） |
 | `log_format`               | string  | `text`                          | ログ形式（text, json）                     |
+
+### 設定の優先度
+
+設定値は以下の優先順位で適用されます（上位が優先）:
+
+1. **コマンドラインフラグ** - `--api-key`, `--log-level` など
+2. **環境変数** - `AIVIS_API_KEY`, `AIVIS_LOG_LEVEL` など  
+3. **設定ファイル** - `~/.aivis-cli.yaml` の記載値
+
+```bash
+# 例：ログレベルの優先順位
+./aivis-cli --log-level DEBUG mcp    # 1. フラグ（最優先）
+export AIVIS_LOG_LEVEL=INFO          # 2. 環境変数
+# ~/.aivis-cli.yaml: log_level: WARN  # 3. 設定ファイル
+```
+
+**環境変数の命名規則**: 設定名の前に `AIVIS_` を付け、大文字に変換します
+- `api_key` → `AIVIS_API_KEY`
+- `log_level` → `AIVIS_LOG_LEVEL` 
+- `default_model_uuid` → `AIVIS_DEFAULT_MODEL_UUID`
+
+### MCP サーバー使用時の注意点
+
+#### ログ出力の自動調整
+
+**stdio モード**（デフォルト）では、標準入出力がMCPプロトコル通信に使用されるため、ログ出力が自動的に`stderr`にリダイレクトされます。これにより、プロトコル通信が汚染されることを防ぎます。
+
+```bash
+# stdio モード - ログは自動的に stderr に出力
+./aivis-cli mcp
+
+# HTTP モード - 通常通り stdout にログ出力
+./aivis-cli mcp --transport http --port 8080
+```
+
+#### Claude Desktop との統合
+
+stdio モードでは、Claude Desktop の設定で直接CLIを指定できます：
+
+```json
+{
+  "mcpServers": {
+    "aivis-cloud-api": {
+      "command": "/path/to/aivis-cli", 
+      "args": ["mcp"],
+      "env": {
+        "AIVIS_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```

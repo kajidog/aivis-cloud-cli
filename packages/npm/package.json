@@ -1,6 +1,6 @@
 {
   "name": "@kajidog/aivis-cloud-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Aivis Cloud CLI - Text-to-speech synthesis and model management",
   "main": "bin/aivis-cloud-cli.js",
   "bin": {
@@ -10,8 +10,6 @@
     "build": "node scripts/build.js",
     "postinstall": "node scripts/postinstall.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "changeset": "changeset",
-    "version-packages": "changeset version",
     "release": "npm run build"
   },
   "keywords": [
@@ -25,6 +23,9 @@
   ],
   "author": "kajidog",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=14.0.0"
   },
