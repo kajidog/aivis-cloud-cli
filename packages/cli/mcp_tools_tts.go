@@ -50,14 +50,13 @@ func RegisterTTSTools(server *mcp.Server) {
 	}
 }
 
-func handleSynthesizeSpeech(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[SynthesizeSpeechParams]) (*mcp.CallToolResultFor[any], error) {
-	args := params.Arguments
+func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args SynthesizeSpeechParams) (*mcp.CallToolResult, any, error) {
 
 	if args.Text == "" {
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: "Text is required"}},
 			IsError: true,
-		}, nil
+		}, nil, nil
 	}
 
 	// Use default model UUID from config if not provided
@@ -147,10 +146,10 @@ func handleSynthesizeSpeech(ctx context.Context, session *mcp.ServerSession, par
 	// Play with options
 	err := aivisClient.PlayRequest(ctx, playbackReq.Build())
 	if err != nil {
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Speech synthesis and playback failed: %v", err)}},
 			IsError: true,
-		}, nil
+		}, nil, nil
 	}
 	
 	// Wait for playback to complete if requested  
@@ -164,10 +163,10 @@ func handleSynthesizeSpeech(ctx context.Context, session *mcp.ServerSession, par
 			// Short sleep to avoid busy waiting
 			select {
 			case <-ctx.Done():
-				return &mcp.CallToolResultFor[any]{
+				return &mcp.CallToolResult{
 					Content: []mcp.Content{&mcp.TextContent{Text: "Context cancelled while waiting for playback completion"}},
 					IsError: true,
-				}, nil
+				}, nil, nil
 			case <-time.After(100 * time.Millisecond):
 				continue
 			}
@@ -200,28 +199,27 @@ func handleSynthesizeSpeech(ctx context.Context, session *mcp.ServerSession, par
 		resultText += "Audio is now playing on the server"
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
-	}, nil
+	}, nil, nil
 }
 
-func handlePlayText(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[PlayTextParams]) (*mcp.CallToolResultFor[any], error) {
-	args := params.Arguments
+func handlePlayText(ctx context.Context, req *mcp.CallToolRequest, args PlayTextParams) (*mcp.CallToolResult, any, error) {
 
 	if args.Text == "" {
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: "Text is required"}},
 			IsError: true,
-		}, nil
+		}, nil, nil
 	}
 
 	// Use default model UUID from config
 	modelUUID := viper.GetString("default_model_uuid")
 	if modelUUID == "" {
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: "Default model UUID is not configured"}},
 			IsError: true,
-		}, nil
+		}, nil, nil
 	}
 
 	// Create TTS request with defaults
@@ -281,10 +279,10 @@ func handlePlayText(ctx context.Context, session *mcp.ServerSession, params *mcp
 	// Play with options
 	err := aivisClient.PlayRequest(ctx, playbackReq.Build())
 	if err != nil {
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Speech synthesis and playback failed: %v", err)}},
 			IsError: true,
-		}, nil
+		}, nil, nil
 	}
 	
 	// Wait for playback to complete if requested  
@@ -298,10 +296,10 @@ func handlePlayText(ctx context.Context, session *mcp.ServerSession, params *mcp
 			// Short sleep to avoid busy waiting
 			select {
 			case <-ctx.Done():
-				return &mcp.CallToolResultFor[any]{
+				return &mcp.CallToolResult{
 					Content: []mcp.Content{&mcp.TextContent{Text: "Context cancelled while waiting for playback completion"}},
 					IsError: true,
-				}, nil
+				}, nil, nil
 			case <-time.After(100 * time.Millisecond):
 				continue
 			}
@@ -319,7 +317,7 @@ func handlePlayText(ctx context.Context, session *mcp.ServerSession, params *mcp
 		resultText += "Audio is now playing on the server"
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
-	}, nil
+	}, nil, nil
 }
