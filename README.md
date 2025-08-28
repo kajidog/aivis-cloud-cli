@@ -28,9 +28,8 @@ npm で配布される CLI ツール。**機能詳細・使用例・MCP設定は
 # 例1: テキストから音声ファイルを生成
 npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.wav"
 
-# 例2: MCPサーバーの起動とClaudeへの登録
-npx @kajidog/aivis-cloud-cli mcp &
-claude mcp add --transport http aivis http://localhost:8080
+# 例2: Claude CodeにMCPを登録
+claude mcp add aivis npx @kajidog/aivis-cloud-cli mcp
 ```
 
 ### [packages/cli/](./packages/cli/) - Go版CLI
