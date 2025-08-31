@@ -301,9 +301,11 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 
 - **synthesize_speech**: テキストを音声に変換してサーバー上で再生（フル機能版）
 
+  - **ストリーミング音声合成**: 音声生成と同時に再生開始（~500ms遅延）
+  - **プログレッシブ再生**: 最初の音声チャンクが到着次第、即座に再生開始
   - パラメータ: `text` (必須), `model_uuid`, `format`, `volume`, `rate`, `pitch`, `playback_mode`, `wait_for_end`
   - 音声フォーマット: `wav`, `mp3`, `flac`, `aac`, `opus`
-  - 再生モード: `immediate` (即座再生), `queue` (キュー追加), `no_queue` (同時再生)
+  - 再生モード: `immediate` (即座再生, デフォルト), `queue` (キュー追加), `no_queue` (同時再生)
 
 - **play_text**: デフォルト設定でテキストを音声再生（簡易版）
   - パラメータ: `text` (必須), `playback_mode`, `wait_for_end`

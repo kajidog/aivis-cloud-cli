@@ -30,7 +30,7 @@ npm で配布される CLI ツール。**機能詳細・使用例・MCP設定は
 # 例1: テキストから音声ファイルを生成
 npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.wav"
 
-# 例2: Claude CodeにMCPを登録
+# 例2: Claude CodeにMCPを登録（AIアシスタントがストリーミング音声合成・即座再生可能）
 claude mcp add aivis npx @kajidog/aivis-cloud-cli mcp
 ```
 
