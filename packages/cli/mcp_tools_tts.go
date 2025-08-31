@@ -158,20 +158,23 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	// Create playback request with options
 	playbackReq := aivisClient.NewPlaybackRequest(request.Build())
 	
-	// Set playback mode
+	// Set playback mode (default to immediate for MCP)
 	playbackMode := args.PlaybackMode
 	if playbackMode == "" {
 		playbackMode = viper.GetString("default_playback_mode")
-	}
-	if playbackMode != "" {
-		switch playbackMode {
-		case "immediate":
-			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeImmediate)
-		case "queue":
-			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeQueue)
-		case "no_queue":
-			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeNoQueue)
+		if playbackMode == "" {
+			playbackMode = "immediate" // MCP default
 		}
+	}
+	switch playbackMode {
+	case "immediate":
+		playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeImmediate)
+	case "queue":
+		playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeQueue)
+	case "no_queue":
+		playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeNoQueue)
+	default:
+		playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeImmediate) // fallback
 	}
 	
 	// Set wait for end flag
@@ -309,20 +312,23 @@ func handlePlayText(ctx context.Context, req *mcp.CallToolRequest, args PlayText
 	// Create playback request with options
 	playbackReq := aivisClient.NewPlaybackRequest(request.Build())
 	
-	// Set playback mode
+	// Set playback mode (default to immediate for MCP)
 	playbackMode := args.PlaybackMode
 	if playbackMode == "" {
 		playbackMode = viper.GetString("default_playback_mode")
-	}
-	if playbackMode != "" {
-		switch playbackMode {
-		case "immediate":
-			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeImmediate)
-		case "queue":
-			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeQueue)
-		case "no_queue":
-			playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeNoQueue)
+		if playbackMode == "" {
+			playbackMode = "immediate" // MCP default
 		}
+	}
+	switch playbackMode {
+	case "immediate":
+		playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeImmediate)
+	case "queue":
+		playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeQueue)
+	case "no_queue":
+		playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeNoQueue)
+	default:
+		playbackReq = playbackReq.WithMode(ttsDomain.PlaybackModeImmediate) // fallback
 	}
 	
 	// Set wait for end flag
