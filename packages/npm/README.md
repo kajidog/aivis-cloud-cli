@@ -309,6 +309,31 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
   - パラメータ: `text` (必須), `playback_mode`, `wait_for_end`
   - 注意: `default_model_uuid` と `use_simplified_tts_tools: true` が設定されている場合のみ利用可能
 
+**設定管理関連:**
+
+- **get_mcp_settings**: 現在のMCP設定を取得
+  - パラメータ: なし
+  - 戻り値: 現在の設定値（APIキーは除外）
+  - セキュリティのため、API キーとシステム設定（ログ設定、簡易TTS設定）は表示されません
+
+- **update_mcp_settings**: MCP設定を安全に更新
+  - パラメータ: `base_url`, `default_model_uuid`, `default_playback_mode`, `default_volume`, `default_rate`, `default_pitch`, `default_format`
+  - 制限: APIキー、ログ設定、`use_simplified_tts_tools` は変更不可
+  - 設定値のバリデーション機能付き（例：音量は0.0-2.0の範囲）
+
+**使用例:**
+```javascript
+// 現在の設定を確認
+get_mcp_settings({})
+
+// 設定を更新
+update_mcp_settings({
+  "default_volume": 0.8,
+  "default_playback_mode": "queue",
+  "default_format": "mp3"
+})
+```
+
 </details>
 
 ## 対応プラットフォーム
