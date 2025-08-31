@@ -66,6 +66,9 @@ npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --out
 
 # SSML マークアップを使用
 npx @kajidog/aivis-cloud-cli tts synthesize --text '<speak>こんにちは<break time="1s"/>世界</speak>' --output "output.wav" --ssml
+
+# 高度なTTSパラメータを使用
+npx @kajidog/aivis-cloud-cli tts synthesize --text "感情豊かに話します" --output "output.wav" --emotional-intensity 1.5 --tempo-dynamics 1.2
 ```
 
 </details>
@@ -300,7 +303,6 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 **音声合成・再生関連:**
 
 - **synthesize_speech**: テキストを音声に変換してサーバー上で再生（フル機能版）
-
   - **ストリーミング音声合成**: 音声生成と同時に再生開始（~500ms遅延）
   - **プログレッシブ再生**: 最初の音声チャンクが到着次第、即座に再生開始
   - パラメータ: `text` (必須), `model_uuid`, `format`, `volume`, `rate`, `pitch`, `playback_mode`, `wait_for_end`
@@ -310,6 +312,55 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 - **play_text**: デフォルト設定でテキストを音声再生（簡易版）
   - パラメータ: `text` (必須), `playback_mode`, `wait_for_end`
   - 注意: `default_model_uuid` と `use_simplified_tts_tools: true` が設定されている場合のみ利用可能
+
+**設定管理関連:**
+
+- **get_mcp_settings**: 現在のMCP設定を取得
+  - パラメータ: なし
+  - 戻り値: 現在の設定値（APIキーは除外）
+  - セキュリティのため、API キーとシステム設定（ログ設定、簡易TTS設定）は表示されません
+
+- **update_mcp_settings**: MCP設定を安全に更新
+  - **基本パラメータ**: `base_url`, `default_model_uuid`, `default_playback_mode`, `default_volume`, `default_rate`, `default_pitch`, `default_format`
+  - **高度なTTSパラメータ**: `default_ssml`, `default_emotional_intensity`, `default_tempo_dynamics`, `default_leading_silence`, `default_trailing_silence`, `default_channels`
+  - **制限**: APIキー、ログ設定、`use_simplified_tts_tools` は変更不可
+  - **設定値のバリデーション機能付き**（例：音量は0.0-2.0の範囲、無音時間は0.0-10.0秒の範囲）
+
+**使用例:**
+```javascript
+// 現在の設定を確認
+get_mcp_settings({})
+
+// 基本的な音声合成（最小限のパラメータ）
+synthesize_speech({
+  "text": "こんにちは世界"
+})
+
+// SSMLを使った高度な音声合成
+synthesize_speech({
+  "text": "<speak><prosody rate='slow'>ゆっくりと</prosody><break time='1s'/>話します</speak>",
+  "ssml": true,
+  "emotional_intensity": 1.5,
+  "tempo_dynamics": 0.8,
+  "leading_silence": 0.2,
+  "trailing_silence": 0.5,
+  "channels": "stereo",
+  "format": "mp3"
+})
+
+// 設定を更新（高度なTTSパラメータを含む）
+update_mcp_settings({
+  "default_volume": 0.8,
+  "default_playback_mode": "queue",
+  "default_format": "mp3",
+  "default_ssml": true,
+  "default_emotional_intensity": 1.2,
+  "default_tempo_dynamics": 1.1,
+  "default_leading_silence": 0.1,
+  "default_trailing_silence": 0.3,
+  "default_channels": "stereo"
+})
+```
 
 </details>
 
@@ -344,6 +395,12 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 | `default_volume`           | float64 | `1.0`                           | デフォルト音量（0.0-2.0）                  |
 | `default_rate`             | float64 | `1.0`                           | デフォルト再生速度（0.5-2.0）              |
 | `default_pitch`            | float64 | `0.0`                           | デフォルトピッチ（-1.0 から 1.0）          |
+| `default_ssml`             | bool    | `false`                         | デフォルトSSML有効化                       |
+| `default_emotional_intensity` | float64 | `0.0`                        | デフォルト感情強度（0.0-2.0）              |
+| `default_tempo_dynamics`   | float64 | `0.0`                           | デフォルトテンポダイナミクス（0.0-2.0）    |
+| `default_leading_silence`  | float64 | `0.0`                           | デフォルト開始無音時間（0.0-10.0秒）       |
+| `default_trailing_silence` | float64 | `0.0`                           | デフォルト終了無音時間（0.0-10.0秒）       |
+| `default_channels`         | string  | `stereo`                        | デフォルトチャンネル設定（mono/stereo）    |
 | `default_wait_for_end`     | bool    | `false`                         | デフォルト再生完了待機                     |
 | `use_simplified_tts_tools` | bool    | `false`                         | MCP で簡略化された TTS ツールを使用        |
 | `log_level`                | string  | `INFO`                          | ログレベル（DEBUG, INFO, WARN, ERROR）     |
@@ -402,6 +459,12 @@ default_format: "wav"
 default_volume: 1.0
 default_rate: 1.0
 default_pitch: 0.0
+default_ssml: false
+default_emotional_intensity: 0.0
+default_tempo_dynamics: 0.0
+default_leading_silence: 0.0
+default_trailing_silence: 0.0
+default_channels: "stereo"
 default_wait_for_end: false
 use_simplified_tts_tools: false
 log_level: "INFO"

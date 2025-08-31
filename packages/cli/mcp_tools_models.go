@@ -196,11 +196,26 @@ func formatSearchResponse(response *domain.ModelSearchResponse) string {
 			result.WriteString(fmt.Sprintf("  Author: %s\n", model.Author))
 		}
 		
+		// Language support info (if available)
+		if model.Language != "" {
+			result.WriteString(fmt.Sprintf("  Language: %s\n", model.Language))
+		}
+		
+		// Speaker count (useful for selection)
+		if len(model.Speakers) > 0 {
+			result.WriteString(fmt.Sprintf("  Speakers: %d\n", len(model.Speakers)))
+		}
+		
 		// Downloads - popularity indicator
 		if model.TotalDownloadCount > 0 {
 			result.WriteString(fmt.Sprintf("  Downloads: %d\n", model.TotalDownloadCount))
 		} else if model.DownloadCount > 0 {
 			result.WriteString(fmt.Sprintf("  Downloads: %d\n", model.DownloadCount))
+		}
+		
+		// Publication date (if available)
+		if !model.CreatedAt.IsZero() {
+			result.WriteString(fmt.Sprintf("  Created: %s\n", model.CreatedAt.Format("2006-01-02")))
 		}
 		
 		result.WriteString("\n")

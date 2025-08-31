@@ -12,14 +12,20 @@ import (
 
 // SynthesizeSpeechParams parameters for synthesize_speech tool
 type SynthesizeSpeechParams struct {
-	Text         string `json:"text"`
-	ModelUUID    string `json:"model_uuid,omitempty"`    // optional, uses config default
-	Format       string `json:"format,omitempty"`        // wav, mp3, flac, aac, opus
-	Volume       float64 `json:"volume,omitempty"`        // 0.0-2.0
-	Rate         float64 `json:"rate,omitempty"`          // 0.5-2.0
-	Pitch        float64 `json:"pitch,omitempty"`         // -1.0 to 1.0
-	PlaybackMode string `json:"playback_mode,omitempty"` // immediate, queue, no_queue
-	WaitForEnd   bool   `json:"wait_for_end,omitempty"`  // wait until playback completes
+	Text               string  `json:"text"`
+	ModelUUID          string  `json:"model_uuid,omitempty"`          // optional, uses config default
+	Format             string  `json:"format,omitempty"`              // wav, mp3, flac, aac, opus
+	Volume             float64 `json:"volume,omitempty"`              // 0.0-2.0
+	Rate               float64 `json:"rate,omitempty"`                // 0.5-2.0
+	Pitch              float64 `json:"pitch,omitempty"`               // -1.0 to 1.0
+	SSML               bool    `json:"ssml,omitempty"`                // enable SSML processing
+	EmotionalIntensity float64 `json:"emotional_intensity,omitempty"` // 0.0-2.0
+	TempoDynamics      float64 `json:"tempo_dynamics,omitempty"`      // 0.0-2.0
+	LeadingSilence     float64 `json:"leading_silence,omitempty"`     // seconds of silence before audio
+	TrailingSilence    float64 `json:"trailing_silence,omitempty"`    // seconds of silence after audio
+	Channels           string  `json:"channels,omitempty"`            // mono, stereo
+	PlaybackMode       string  `json:"playback_mode,omitempty"`       // immediate, queue, no_queue
+	WaitForEnd         bool    `json:"wait_for_end,omitempty"`        // wait until playback completes
 }
 
 // PlayTextParams parameters for play_text tool (simplified version)
@@ -72,6 +78,11 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	// Build TTS request
 	request := aivisClient.NewTTSRequest(modelUUID, args.Text)
 
+	// Apply SSML setting
+	if args.SSML {
+		request = request.WithSSML(true)
+	}
+
 	// Apply optional parameters with config defaults
 	volume := args.Volume
 	if volume == 0 {
@@ -95,6 +106,33 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	}
 	if pitch != 0 {
 		request = request.WithPitch(pitch)
+	}
+
+	// Apply advanced TTS parameters
+	if args.EmotionalIntensity > 0 {
+		request = request.WithEmotionalIntensity(args.EmotionalIntensity)
+	}
+
+	if args.TempoDynamics > 0 {
+		request = request.WithTempoDynamics(args.TempoDynamics)
+	}
+
+	if args.LeadingSilence > 0 {
+		request = request.WithLeadingSilence(args.LeadingSilence)
+	}
+
+	if args.TrailingSilence > 0 {
+		request = request.WithTrailingSilence(args.TrailingSilence)
+	}
+
+	// Set audio channels
+	if args.Channels != "" {
+		switch args.Channels {
+		case "mono":
+			request = request.WithOutputChannels(ttsDomain.AudioChannelsMono)
+		case "stereo":
+			request = request.WithOutputChannels(ttsDomain.AudioChannelsStereo)
+		}
 	}
 
 	// Set output format with config default
@@ -180,8 +218,14 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	resultText := "Audio synthesized and played successfully\n"
 	resultText += fmt.Sprintf("Text: %s\n", args.Text)
 	resultText += fmt.Sprintf("Model: %s\n", modelUUID)
+	if args.SSML {
+		resultText += "SSML: enabled\n"
+	}
 	if format != "" {
 		resultText += fmt.Sprintf("Format: %s\n", format)
+	}
+	if args.Channels != "" {
+		resultText += fmt.Sprintf("Channels: %s\n", args.Channels)
 	}
 	if volume > 0 {
 		resultText += fmt.Sprintf("Volume: %.2f\n", volume)
@@ -191,6 +235,18 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	}
 	if pitch != 0 {
 		resultText += fmt.Sprintf("Pitch: %.2f\n", pitch)
+	}
+	if args.EmotionalIntensity > 0 {
+		resultText += fmt.Sprintf("Emotional Intensity: %.2f\n", args.EmotionalIntensity)
+	}
+	if args.TempoDynamics > 0 {
+		resultText += fmt.Sprintf("Tempo Dynamics: %.2f\n", args.TempoDynamics)
+	}
+	if args.LeadingSilence > 0 {
+		resultText += fmt.Sprintf("Leading Silence: %.2fs\n", args.LeadingSilence)
+	}
+	if args.TrailingSilence > 0 {
+		resultText += fmt.Sprintf("Trailing Silence: %.2fs\n", args.TrailingSilence)
 	}
 	if playbackMode != "" {
 		resultText += fmt.Sprintf("Playback Mode: %s\n", playbackMode)
