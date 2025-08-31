@@ -1,5 +1,14 @@
 # @kajidog/aivis-cloud-cli
 
+## 0.4.1
+
+### Patch Changes
+
+- 74fbf3a: Improve MCP documentation and default behavior:
+  - Add streaming audio synthesis documentation for MCP tools
+  - Fix MCP default playback mode to 'immediate' when not configured
+  - Update README with streaming synthesis details for synthesize_speech tool
+
 ## 0.4.0
 
 ### Minor Changes
