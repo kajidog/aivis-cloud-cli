@@ -18,6 +18,9 @@ func RegisterAllTools(server *mcp.Server) {
 	// Register TTS-related tools
 	RegisterTTSTools(server)
 
+	// Register configuration tools
+	RegisterConfigTools(server)
+
 	// Future tool categories can be added here:
 	// RegisterUserTools(server)
 	// RegisterPaymentTools(server)
