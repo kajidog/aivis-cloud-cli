@@ -197,8 +197,8 @@ func formatSearchResponse(response *domain.ModelSearchResponse) string {
 		}
 		
 		// Language support info (if available)
-		if len(model.SupportedLanguages) > 0 {
-			result.WriteString(fmt.Sprintf("  Languages: %s\n", strings.Join(model.SupportedLanguages, ", ")))
+		if model.Language != "" {
+			result.WriteString(fmt.Sprintf("  Language: %s\n", model.Language))
 		}
 		
 		// Speaker count (useful for selection)
