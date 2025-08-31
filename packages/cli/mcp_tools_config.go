@@ -16,24 +16,36 @@ type GetMCPSettingsParams struct {
 
 // UpdateMCPSettingsParams parameters for update_mcp_settings tool
 type UpdateMCPSettingsParams struct {
-	BaseURL               string  `json:"base_url,omitempty"`
-	DefaultModelUUID      string  `json:"default_model_uuid,omitempty"`
-	DefaultPlaybackMode   string  `json:"default_playback_mode,omitempty"`
-	DefaultVolume         float64 `json:"default_volume,omitempty"`
-	DefaultRate           float64 `json:"default_rate,omitempty"`
-	DefaultPitch          float64 `json:"default_pitch,omitempty"`
-	DefaultFormat         string  `json:"default_format,omitempty"`
+	BaseURL                     string  `json:"base_url,omitempty"`
+	DefaultModelUUID            string  `json:"default_model_uuid,omitempty"`
+	DefaultPlaybackMode         string  `json:"default_playback_mode,omitempty"`
+	DefaultVolume               float64 `json:"default_volume,omitempty"`
+	DefaultRate                 float64 `json:"default_rate,omitempty"`
+	DefaultPitch                float64 `json:"default_pitch,omitempty"`
+	DefaultFormat               string  `json:"default_format,omitempty"`
+	DefaultSSML                 bool    `json:"default_ssml,omitempty"`
+	DefaultEmotionalIntensity   float64 `json:"default_emotional_intensity,omitempty"`
+	DefaultTempoDynamics        float64 `json:"default_tempo_dynamics,omitempty"`
+	DefaultLeadingSilence       float64 `json:"default_leading_silence,omitempty"`
+	DefaultTrailingSilence      float64 `json:"default_trailing_silence,omitempty"`
+	DefaultChannels             string  `json:"default_channels,omitempty"`
 }
 
 // MCPSettings represents the safe configuration settings
 type MCPSettings struct {
-	BaseURL             string  `json:"base_url"`
-	DefaultModelUUID    string  `json:"default_model_uuid"`
-	DefaultPlaybackMode string  `json:"default_playback_mode"`
-	DefaultVolume       float64 `json:"default_volume"`
-	DefaultRate         float64 `json:"default_rate"`
-	DefaultPitch        float64 `json:"default_pitch"`
-	DefaultFormat       string  `json:"default_format"`
+	BaseURL                   string  `json:"base_url"`
+	DefaultModelUUID          string  `json:"default_model_uuid"`
+	DefaultPlaybackMode       string  `json:"default_playback_mode"`
+	DefaultVolume             float64 `json:"default_volume"`
+	DefaultRate               float64 `json:"default_rate"`
+	DefaultPitch              float64 `json:"default_pitch"`
+	DefaultFormat             string  `json:"default_format"`
+	DefaultSSML               bool    `json:"default_ssml"`
+	DefaultEmotionalIntensity float64 `json:"default_emotional_intensity"`
+	DefaultTempoDynamics      float64 `json:"default_tempo_dynamics"`
+	DefaultLeadingSilence     float64 `json:"default_leading_silence"`
+	DefaultTrailingSilence    float64 `json:"default_trailing_silence"`
+	DefaultChannels           string  `json:"default_channels"`
 }
 
 // RegisterConfigTools registers all configuration-related MCP tools
@@ -52,13 +64,19 @@ func RegisterConfigTools(server *mcp.Server) {
 func handleGetMCPSettings(ctx context.Context, req *mcp.CallToolRequest, args GetMCPSettingsParams) (*mcp.CallToolResult, any, error) {
 	// Get current settings from viper (excluding sensitive information)
 	settings := MCPSettings{
-		BaseURL:             viper.GetString("base_url"),
-		DefaultModelUUID:    viper.GetString("default_model_uuid"),
-		DefaultPlaybackMode: viper.GetString("default_playback_mode"),
-		DefaultVolume:       viper.GetFloat64("default_volume"),
-		DefaultRate:         viper.GetFloat64("default_rate"),
-		DefaultPitch:        viper.GetFloat64("default_pitch"),
-		DefaultFormat:       viper.GetString("default_format"),
+		BaseURL:                   viper.GetString("base_url"),
+		DefaultModelUUID:          viper.GetString("default_model_uuid"),
+		DefaultPlaybackMode:       viper.GetString("default_playback_mode"),
+		DefaultVolume:             viper.GetFloat64("default_volume"),
+		DefaultRate:               viper.GetFloat64("default_rate"),
+		DefaultPitch:              viper.GetFloat64("default_pitch"),
+		DefaultFormat:             viper.GetString("default_format"),
+		DefaultSSML:               viper.GetBool("default_ssml"),
+		DefaultEmotionalIntensity: viper.GetFloat64("default_emotional_intensity"),
+		DefaultTempoDynamics:      viper.GetFloat64("default_tempo_dynamics"),
+		DefaultLeadingSilence:     viper.GetFloat64("default_leading_silence"),
+		DefaultTrailingSilence:    viper.GetFloat64("default_trailing_silence"),
+		DefaultChannels:           viper.GetString("default_channels"),
 	}
 
 	// Format response as readable text
@@ -71,6 +89,12 @@ func handleGetMCPSettings(ctx context.Context, req *mcp.CallToolRequest, args Ge
 	result.WriteString(fmt.Sprintf("Default Rate: %.2f\n", settings.DefaultRate))
 	result.WriteString(fmt.Sprintf("Default Pitch: %.2f\n", settings.DefaultPitch))
 	result.WriteString(fmt.Sprintf("Default Format: %s\n", settings.DefaultFormat))
+	result.WriteString(fmt.Sprintf("Default SSML: %t\n", settings.DefaultSSML))
+	result.WriteString(fmt.Sprintf("Default Emotional Intensity: %.2f\n", settings.DefaultEmotionalIntensity))
+	result.WriteString(fmt.Sprintf("Default Tempo Dynamics: %.2f\n", settings.DefaultTempoDynamics))
+	result.WriteString(fmt.Sprintf("Default Leading Silence: %.2fs\n", settings.DefaultLeadingSilence))
+	result.WriteString(fmt.Sprintf("Default Trailing Silence: %.2fs\n", settings.DefaultTrailingSilence))
+	result.WriteString(fmt.Sprintf("Default Channels: %s\n", settings.DefaultChannels))
 	result.WriteString("\nNote: API key and system settings are not displayed for security reasons.")
 
 	return &mcp.CallToolResult{
@@ -161,6 +185,70 @@ func handleUpdateMCPSettings(ctx context.Context, req *mcp.CallToolRequest, args
 		} else {
 			viper.Set("default_format", args.DefaultFormat)
 			updates = append(updates, fmt.Sprintf("Default Format: %s", args.DefaultFormat))
+		}
+	}
+
+	// Update default_ssml
+	if args.DefaultSSML {
+		viper.Set("default_ssml", args.DefaultSSML)
+		updates = append(updates, fmt.Sprintf("Default SSML: %t", args.DefaultSSML))
+	}
+
+	// Validate and update default_emotional_intensity
+	if args.DefaultEmotionalIntensity > 0 {
+		if args.DefaultEmotionalIntensity < 0.0 || args.DefaultEmotionalIntensity > 2.0 {
+			errors = append(errors, "default_emotional_intensity must be between 0.0 and 2.0")
+		} else {
+			viper.Set("default_emotional_intensity", args.DefaultEmotionalIntensity)
+			updates = append(updates, fmt.Sprintf("Default Emotional Intensity: %.2f", args.DefaultEmotionalIntensity))
+		}
+	}
+
+	// Validate and update default_tempo_dynamics
+	if args.DefaultTempoDynamics > 0 {
+		if args.DefaultTempoDynamics < 0.0 || args.DefaultTempoDynamics > 2.0 {
+			errors = append(errors, "default_tempo_dynamics must be between 0.0 and 2.0")
+		} else {
+			viper.Set("default_tempo_dynamics", args.DefaultTempoDynamics)
+			updates = append(updates, fmt.Sprintf("Default Tempo Dynamics: %.2f", args.DefaultTempoDynamics))
+		}
+	}
+
+	// Validate and update default_leading_silence
+	if args.DefaultLeadingSilence > 0 {
+		if args.DefaultLeadingSilence < 0.0 || args.DefaultLeadingSilence > 10.0 {
+			errors = append(errors, "default_leading_silence must be between 0.0 and 10.0 seconds")
+		} else {
+			viper.Set("default_leading_silence", args.DefaultLeadingSilence)
+			updates = append(updates, fmt.Sprintf("Default Leading Silence: %.2fs", args.DefaultLeadingSilence))
+		}
+	}
+
+	// Validate and update default_trailing_silence
+	if args.DefaultTrailingSilence > 0 {
+		if args.DefaultTrailingSilence < 0.0 || args.DefaultTrailingSilence > 10.0 {
+			errors = append(errors, "default_trailing_silence must be between 0.0 and 10.0 seconds")
+		} else {
+			viper.Set("default_trailing_silence", args.DefaultTrailingSilence)
+			updates = append(updates, fmt.Sprintf("Default Trailing Silence: %.2fs", args.DefaultTrailingSilence))
+		}
+	}
+
+	// Validate and update default_channels
+	if args.DefaultChannels != "" {
+		validChannels := []string{"mono", "stereo"}
+		isValid := false
+		for _, channel := range validChannels {
+			if args.DefaultChannels == channel {
+				isValid = true
+				break
+			}
+		}
+		if !isValid {
+			errors = append(errors, "default_channels must be one of: mono, stereo")
+		} else {
+			viper.Set("default_channels", args.DefaultChannels)
+			updates = append(updates, fmt.Sprintf("Default Channels: %s", args.DefaultChannels))
 		}
 	}
 
