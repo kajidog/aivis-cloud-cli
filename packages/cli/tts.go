@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	ttsDomain "github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 	"github.com/spf13/cobra"
@@ -137,7 +138,7 @@ var ttsPlayCmd = &cobra.Command{
 var ttsSynthesizeCmd = &cobra.Command{
 	Use:   "synthesize [text] [output-file] [model-uuid]",
 	Short: "Synthesize text to audio file",
-	Long:  "Convert text to speech and save to audio file",
+	Long:  "Convert text to speech and save to audio file. If output file is not specified, it will be auto-generated.",
 	Args:  cobra.RangeArgs(0, 3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text := ""
@@ -164,8 +165,37 @@ var ttsSynthesizeCmd = &cobra.Command{
 		if text == "" {
 			return fmt.Errorf("text is required (provide as argument or --text flag)")
 		}
+		
+		// Get format flag for filename generation
+		format, _ := cmd.Flags().GetString("format")
+		
+		// Auto-generate output filename if not specified
 		if outputFile == "" {
-			return fmt.Errorf("output file is required (provide as argument or --output flag)")
+			// Generate filename based on current timestamp and format
+			timestamp := time.Now().Format("20060102_150405")
+			
+			// Determine file extension based on format
+			var extension string
+			switch format {
+			case "wav":
+				extension = ".wav"
+			case "flac":
+				extension = ".flac"
+			case "mp3":
+				extension = ".mp3"
+			case "aac":
+				extension = ".aac"
+			case "opus":
+				extension = ".opus"
+			default:
+				extension = ".wav" // default
+			}
+			
+			outputFile = fmt.Sprintf("tts_%s%s", timestamp, extension)
+			
+			if verbose {
+				fmt.Fprintf(os.Stderr, "Auto-generated output filename: %s\n", outputFile)
+			}
 		}
 
 		// Check for model-uuid flag
@@ -178,7 +208,6 @@ var ttsSynthesizeCmd = &cobra.Command{
 		rate, _ := cmd.Flags().GetFloat64("rate")
 		pitch, _ := cmd.Flags().GetFloat64("pitch")
 		ssml, _ := cmd.Flags().GetBool("ssml")
-		format, _ := cmd.Flags().GetString("format")
 		channels, _ := cmd.Flags().GetString("channels")
 		leadingSilence, _ := cmd.Flags().GetFloat64("leading-silence")
 		trailingSilence, _ := cmd.Flags().GetFloat64("trailing-silence")
@@ -239,19 +268,20 @@ var ttsSynthesizeCmd = &cobra.Command{
 
 		ttsReq := request.Build()
 
-		// Create output file
-		file, err := os.Create(outputFile)
-		if err != nil {
-			return fmt.Errorf("failed to create output file: %v", err)
-		}
-		defer file.Close()
-
 		ctx := context.Background()
-		if err := aivisClient.SynthesizeToFile(ctx, ttsReq, file); err != nil {
+		
+		// Use the new history-aware method
+		response, err := aivisClient.SynthesizeToFileWithHistory(ctx, ttsReq, outputFile)
+		if err != nil {
 			return fmt.Errorf("failed to synthesize to file: %v", err)
 		}
 
 		fmt.Printf("Audio saved to: %s\n", outputFile)
+		
+		// Show history ID if available
+		if response.HistoryID > 0 {
+			fmt.Printf("History saved with ID: %d\n", response.HistoryID)
+		}
 		return nil
 	},
 }
@@ -382,7 +412,7 @@ func init() {
 
 	// TTS synthesize command flags
 	ttsSynthesizeCmd.Flags().String("text", "", "Text to synthesize")
-	ttsSynthesizeCmd.Flags().String("output", "", "Output file path")
+	ttsSynthesizeCmd.Flags().String("output", "", "Output file path (auto-generated if not specified)")
 	ttsSynthesizeCmd.Flags().String("model-uuid", "", "Voice model UUID (uses default if not specified)")
 	ttsSynthesizeCmd.Flags().Float64("volume", 0, "Audio volume (0.0 to 2.0)")
 	ttsSynthesizeCmd.Flags().Float64("rate", 0, "Speaking rate (0.5 to 2.0)")
@@ -405,4 +435,5 @@ func init() {
 	ttsCmd.AddCommand(ttsStreamCmd)
 	ttsCmd.AddCommand(ttsControlCmd)
 	ttsCmd.AddCommand(ttsVolumeCmd)
+	ttsCmd.AddCommand(ttsHistoryCmd) // Add history command
 }

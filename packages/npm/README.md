@@ -7,9 +7,10 @@ Aivis Cloud API を使用して音声合成と音声再生を行うコマンド�
 ## このパッケージでできること
 
 - **音声合成（TTS）**: テキストを自然な音声に変換
+- **履歴管理・Resume機能**: 合成履歴の自動保存と連番IDでの再生機能
 - **柔軟な音声再生**: 同期・非同期再生、キュー管理による複数音声制御
 - **MCP（Model Context Protocol）対応**: Claude などの AI アシスタントが直接音声再生可能
-- **豊富な音声モデル**: 人気・最新・作者別など多様な検索とモデル管理
+- **音声モデル検索**: 人気・最新・作者別など多様な検索とモデル管理
 - **設定管理**: API キーや各種設定の保存・管理
 
 ## インストール
@@ -55,11 +56,16 @@ Aivis Cloud API キーが必要です。
 <summary>テキストを音声に変換</summary>
 
 ```bash
-# 基本的な音声合成（デフォルトモデルを使用、出力ファイル必須）
-npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.wav"
+# 基本的な音声合成（デフォルトモデルを使用、出力ファイル名自動生成）
+npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界"
+# → Output: tts_20240101_120000.wav（タイムスタンプ付き）
+# → History saved with ID: 1
 
 # 位置引数を使用した音声ファイル保存
 npx @kajidog/aivis-cloud-cli tts synthesize "こんにちは" "output.wav"
+
+# 出力ファイル名を明示的に指定
+npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.wav"
 
 # 特定のモデルを指定
 npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.wav" --model-uuid "model-id"
@@ -114,6 +120,76 @@ npx @kajidog/aivis-cloud-cli tts synthesize \
 ```bash
 # ストリーミング合成（リアルタイム出力、標準出力に音声データを出力）
 npx @kajidog/aivis-cloud-cli tts stream --text "こんにちは世界" > output.wav
+```
+
+</details>
+
+### TTS履歴管理機能
+
+<details>
+<summary>履歴の自動保存とResume機能</summary>
+
+TTS合成実行時に履歴が自動保存され、連番IDで管理されます。
+
+```bash
+# 音声合成（履歴自動保存）
+npx @kajidog/aivis-cloud-cli tts synthesize "こんにちは世界"
+# → History saved with ID: 1
+
+# 履歴一覧表示
+npx @kajidog/aivis-cloud-cli tts history list
+# ID  Text          Model     Format  Size    Created
+# 1   こんにちは世界  a59cb...  wav     45KB    01/01 12:00
+
+# 履歴詳細表示（リクエスト内容、ファイル情報など）
+npx @kajidog/aivis-cloud-cli tts history show 1
+# Text: こんにちは世界
+# Model UUID: a59cb814-0083-4369-8542-f51a29e72af7
+# Created: 2025-01-01 12:00:00
+# File Path: tts_20250101_120000.wav
+# File Format: wav
+# File Size: 45.2 KB
+# Credits Used: 0.0050
+# 
+# Request Details:
+# ----------------
+# Speaking Rate: 1.20
+# Pitch: 0.10
+# Volume: 0.80
+# Output Format: mp3
+# Audio Channels: stereo
+# Leading Silence: 0.50 seconds
+# Trailing Silence: 0.30 seconds
+# Sampling Rate: 44100 Hz
+# Bitrate: 128 kbps
+# SSML: Enabled
+
+# 履歴から再生（Resume機能）
+npx @kajidog/aivis-cloud-cli tts history play 1
+
+# 履歴統計
+npx @kajidog/aivis-cloud-cli tts history stats
+
+# 履歴削除
+npx @kajidog/aivis-cloud-cli tts history delete 1 --force
+
+# 古い履歴のクリーンアップ（30日以上前）
+npx @kajidog/aivis-cloud-cli tts history clean --older-than 30
+
+# 全履歴削除
+npx @kajidog/aivis-cloud-cli tts history clean --all --force
+```
+
+**履歴設定:**
+```bash
+# 履歴機能を無効化
+npx @kajidog/aivis-cloud-cli config set history_enabled false
+
+# 最大保存件数を変更（デフォルト: 100）
+npx @kajidog/aivis-cloud-cli config set history_max_count 50
+
+# 履歴保存パスを変更
+npx @kajidog/aivis-cloud-cli config set history_store_path "/custom/path"
 ```
 
 </details>
@@ -303,7 +379,7 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 **音声合成・再生関連:**
 
 - **synthesize_speech**: テキストを音声に変換してサーバー上で再生（フル機能版）
-  - **ストリーミング音声合成**: 音声生成と同時に再生開始（~500ms遅延）
+  - **ストリーミング音声合成**: 音声生成と同時に再生開始
   - **プログレッシブ再生**: 最初の音声チャンクが到着次第、即座に再生開始
   - パラメータ: `text` (必須), `model_uuid`, `format`, `volume`, `rate`, `pitch`, `playback_mode`, `wait_for_end`
   - 音声フォーマット: `wav`, `mp3`, `flac`, `aac`, `opus`
@@ -312,6 +388,28 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 - **play_text**: デフォルト設定でテキストを音声再生（簡易版）
   - パラメータ: `text` (必須), `playback_mode`, `wait_for_end`
   - 注意: `default_model_uuid` と `use_simplified_tts_tools: true` が設定されている場合のみ利用可能
+
+**TTS履歴管理（Resume機能）:**
+
+- **list_tts_history**: TTS履歴一覧表示・検索
+  - パラメータ: `limit`, `offset`, `model_uuid`, `text_contains`, `sort_by`, `sort_order`
+  - 連番IDで管理された履歴レコードをページネーション・フィルタリング表示
+
+- **get_tts_history**: 特定履歴の詳細情報取得
+  - パラメータ: `id` (必須)
+  - テキスト、モデル、ファイル情報、使用クレジット、リクエスト詳細を表示
+
+- **play_tts_history**: **履歴から音声再生（Resume機能）**
+  - パラメータ: `id` (必須), `volume`, `playback_mode`, `wait_for_end`
+  - **メインのResume機能**: 過去の音声合成をIDで即座再生
+
+- **delete_tts_history**: 特定履歴削除
+  - パラメータ: `id` (必須)
+  - 履歴レコードと関連音声ファイルを削除
+
+- **get_tts_history_stats**: 履歴統計情報取得
+  - パラメータ: なし
+  - 総レコード数、ストレージ使用量、使用クレジットの統計を表示
 
 **設定管理関連:**
 
@@ -347,6 +445,17 @@ synthesize_speech({
   "channels": "stereo",
   "format": "mp3"
 })
+
+// TTS履歴の管理・Resume機能
+list_tts_history({"limit": 10, "sort_by": "created_at"})  // 最新10件を表示
+
+get_tts_history({"id": 3})  // ID=3の履歴詳細を取得
+
+play_tts_history({"id": 3, "volume": 0.8})  // ID=3を音量0.8で再生（Resume）
+
+delete_tts_history({"id": 1})  // ID=1の履歴を削除
+
+get_tts_history_stats({})  // 履歴統計を表示
 
 // 設定を更新（高度なTTSパラメータを含む）
 update_mcp_settings({
@@ -403,6 +512,9 @@ update_mcp_settings({
 | `default_channels`         | string  | `stereo`                        | デフォルトチャンネル設定（mono/stereo）    |
 | `default_wait_for_end`     | bool    | `false`                         | デフォルト再生完了待機                     |
 | `use_simplified_tts_tools` | bool    | `false`                         | MCP で簡略化された TTS ツールを使用        |
+| `history_enabled`          | bool    | `true`                          | TTS履歴管理機能の有効/無効                 |
+| `history_max_count`        | int     | `100`                           | 履歴最大保存件数（自動削除の閾値）         |
+| `history_store_path`       | string  | `~/.aivis-cli/history/`         | 履歴ファイル保存ディレクトリ               |
 | `log_level`                | string  | `INFO`                          | ログレベル（DEBUG, INFO, WARN, ERROR）     |
 | `log_output`               | string  | `stdout`                        | ログ出力先（stdout, stderr, ファイルパス） |
 | `log_format`               | string  | `text`                          | ログ形式（text, json）                     |
@@ -467,6 +579,9 @@ default_trailing_silence: 0.0
 default_channels: "stereo"
 default_wait_for_end: false
 use_simplified_tts_tools: false
+history_enabled: true
+history_max_count: 100
+history_store_path: "~/.aivis-cli/history/"
 log_level: "INFO"
 log_output: "stdout"
 log_format: "text"

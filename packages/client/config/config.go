@@ -3,6 +3,7 @@ package config
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -32,6 +33,16 @@ type Config struct {
 	
 	// LogFormat sets the log output format (text, json)
 	LogFormat string
+	
+	// History management settings
+	// HistoryEnabled enables or disables TTS history management
+	HistoryEnabled bool
+	
+	// HistoryMaxCount sets the maximum number of history records to keep
+	HistoryMaxCount int
+	
+	// HistoryStorePath sets the directory path for storing history data
+	HistoryStorePath string
 }
 
 // DefaultConfig returns a default configuration
@@ -44,6 +55,9 @@ func DefaultConfig() *Config {
 		LogLevel:            "INFO",
 		LogOutput:           "stdout",
 		LogFormat:           "text",
+		HistoryEnabled:      true,
+		HistoryMaxCount:     100,
+		HistoryStorePath:    "", // Will be set to default user directory
 	}
 }
 
@@ -96,6 +110,39 @@ func (c *Config) WithLogFormat(format string) *Config {
 	return c
 }
 
+// WithHistoryEnabled enables or disables TTS history management
+func (c *Config) WithHistoryEnabled(enabled bool) *Config {
+	c.HistoryEnabled = enabled
+	return c
+}
+
+// WithHistoryMaxCount sets the maximum number of history records to keep
+func (c *Config) WithHistoryMaxCount(maxCount int) *Config {
+	c.HistoryMaxCount = maxCount
+	return c
+}
+
+// WithHistoryStorePath sets the directory path for storing history data
+func (c *Config) WithHistoryStorePath(path string) *Config {
+	c.HistoryStorePath = path
+	return c
+}
+
+// GetHistoryStorePath returns the full path for history storage
+func (c *Config) GetHistoryStorePath() (string, error) {
+	if c.HistoryStorePath != "" {
+		return c.HistoryStorePath, nil
+	}
+	
+	// Use default user home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	
+	return filepath.Join(homeDir, ".aivis-cli", "history"), nil
+}
+
 // GetLogWriter returns the appropriate writer for log output
 func (c *Config) GetLogWriter() (io.Writer, error) {
 	switch strings.ToLower(c.LogOutput) {
@@ -123,6 +170,9 @@ func (c *Config) Validate() error {
 	}
 	if c.HTTPTimeout <= 0 {
 		return &ValidationError{Field: "HTTPTimeout", Message: "HTTP timeout must be positive"}
+	}
+	if c.HistoryEnabled && c.HistoryMaxCount <= 0 {
+		return &ValidationError{Field: "HistoryMaxCount", Message: "History max count must be positive when history is enabled"}
 	}
 	return nil
 }

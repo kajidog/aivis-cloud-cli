@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	ttsDomain "github.com/kajidog/aivis-cloud-cli/client/tts/domain"
@@ -184,11 +186,32 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	}
 	playbackReq = playbackReq.WithWaitForEnd(waitForEnd)
 	
-	// Play with options
-	err := aivisClient.PlayRequest(ctx, playbackReq.Build())
+	// Generate filename and save to history directory (absolute path)
+	timestamp := time.Now().Format("20060102_150405")
+	if format == "" {
+		format = "wav"
+	}
+	
+	// Get history directory from config or use default
+	historyDir := viper.GetString("history_store_path")
+	if historyDir == "" {
+		homeDir, _ := os.UserHomeDir()
+		historyDir = filepath.Join(homeDir, ".aivis-cli", "history", "audio")
+	} else {
+		historyDir = filepath.Join(historyDir, "audio")
+	}
+	
+	// Ensure directory exists
+	os.MkdirAll(historyDir, 0755)
+	
+	// Create absolute path for the audio file
+	tempFile := filepath.Join(historyDir, fmt.Sprintf("mcp_%s.%s", timestamp, format))
+	
+	// Use streaming synthesis with history and playback
+	response, err := aivisClient.PlayStreamWithHistory(ctx, playbackReq.Build(), tempFile)
 	if err != nil {
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Speech synthesis and playback failed: %v", err)}},
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Streaming synthesis and playback failed: %v", err)}},
 			IsError: true,
 		}, nil, nil
 	}
@@ -214,8 +237,13 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 		}
 	}
 
-	// Format response with playback info
+	// Format response with playback info including history ID
 	resultText := "Audio synthesized and played successfully\n"
+	if response.HistoryID > 0 {
+		resultText += fmt.Sprintf("History ID: %d\n", response.HistoryID)
+	} else {
+		resultText += "History ID: (not saved - check history configuration)\n"
+	}
 	resultText += fmt.Sprintf("Text: %s\n", args.Text)
 	resultText += fmt.Sprintf("Model: %s\n", modelUUID)
 	if args.SSML {
@@ -338,11 +366,35 @@ func handlePlayText(ctx context.Context, req *mcp.CallToolRequest, args PlayText
 	}
 	playbackReq = playbackReq.WithWaitForEnd(waitForEnd)
 	
-	// Play with options
-	err := aivisClient.PlayRequest(ctx, playbackReq.Build())
+	// Get format from config for file naming
+	format := viper.GetString("default_format")
+	if format == "" {
+		format = "wav"
+	}
+	
+	// Generate filename and save to history directory (absolute path)
+	timestamp := time.Now().Format("20060102_150405")
+	
+	// Get history directory from config or use default
+	historyDir := viper.GetString("history_store_path")
+	if historyDir == "" {
+		homeDir, _ := os.UserHomeDir()
+		historyDir = filepath.Join(homeDir, ".aivis-cli", "history", "audio")
+	} else {
+		historyDir = filepath.Join(historyDir, "audio")
+	}
+	
+	// Ensure directory exists
+	os.MkdirAll(historyDir, 0755)
+	
+	// Create absolute path for the audio file
+	tempFile := filepath.Join(historyDir, fmt.Sprintf("mcp_%s.%s", timestamp, format))
+	
+	// Use streaming synthesis with history and playback
+	response, err := aivisClient.PlayStreamWithHistory(ctx, playbackReq.Build(), tempFile)
 	if err != nil {
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Speech synthesis and playback failed: %v", err)}},
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Streaming synthesis and playback failed: %v", err)}},
 			IsError: true,
 		}, nil, nil
 	}
@@ -368,8 +420,14 @@ func handlePlayText(ctx context.Context, req *mcp.CallToolRequest, args PlayText
 		}
 	}
 
-	// Format response
-	resultText := fmt.Sprintf("Text: %s\n", args.Text)
+	// Format response including history ID
+	var resultText string
+	if response.HistoryID > 0 {
+		resultText = fmt.Sprintf("History ID: %d\n", response.HistoryID)
+	} else {
+		resultText = "History ID: (not saved - check history configuration)\n"
+	}
+	resultText += fmt.Sprintf("Text: %s\n", args.Text)
 	if playbackMode != "" {
 		resultText += fmt.Sprintf("Playback Mode: %s\n", playbackMode)
 	}

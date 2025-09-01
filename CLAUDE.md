@@ -32,6 +32,7 @@ Instead of grouping by technical layers, code is organized by business features:
 - **Payment** (`payment/`): Billing and payment information
 - **Common** (`common/`): Shared utilities (HTTP client, error handling, logging)
 - **Config** (`config/`): Configuration management
+- **History** (`tts/domain/history.go`, `tts/infrastructure/history_repository.go`, `tts/usecase/history_manager.go`): TTS synthesis history management
 
 ### CLI Architecture
 
@@ -42,6 +43,7 @@ The CLI (`packages/cli/`) is built using Cobra and provides:
 - **Global Client**: Shared `aivisClient` instance across all commands
 - **MCP Server**: Model Context Protocol server with stdio and HTTP transports
 - **Automatic Log Redirection**: stdio MCP mode automatically redirects logs to stderr to prevent protocol contamination
+- **History Management**: TTS synthesis history tracking with automatic cleanup and resume functionality
 
 ### Key Design Patterns
 
@@ -197,6 +199,10 @@ Manages client settings with validation:
 - HTTP timeout (default: 60s)
 - User agent string
 - Default playback mode for audio playback
+- History management settings:
+  - `HistoryEnabled`: Enable/disable TTS history management (default: true)
+  - `HistoryMaxCount`: Maximum number of history records to keep (default: 100)
+  - `HistoryStorePath`: Directory path for storing history data (default: ~/.aivis-cli/history/)
 
 ### Audio Playback System (`tts/domain/player.go`, `tts/infrastructure/player.go`, `tts/usecase/player.go`)
 
@@ -254,6 +260,34 @@ The system automatically detects available audio players on each platform:
 
 **Position Tracking:**
 Uses file size and format-specific bitrate estimates to calculate audio duration, combined with `time.Since(startTime)` for real-time position tracking. Process completion is detected using `cmd.Wait()`.
+
+### TTS History Management
+
+Comprehensive history tracking system for TTS synthesis:
+
+**Architecture:**
+- **Domain Layer**: `TTSHistory`, `TTSHistoryRepository`, `TTSHistoryManager` interfaces
+- **Infrastructure Layer**: File-based repository with JSON metadata and audio file storage
+- **Usecase Layer**: Business logic for history operations and automatic cleanup
+
+**Features:**
+- Sequential ID system (1, 2, 3...) for user-friendly CLI operations
+- Automatic history saving for all TTS synthesis operations
+- File storage structure: `~/.aivis-cli/history/` with `metadata.json` and `audio/` directory
+- Configurable maximum record count with automatic cleanup
+- History search and filtering (by model, text content, date range)
+- Resume functionality to replay any previous synthesis
+
+**Storage Format:**
+```
+~/.aivis-cli/history/
+├── metadata.json        # History metadata with all record details
+├── counter.json         # Next sequential ID counter
+└── audio/
+    ├── 1.wav           # Audio file for history ID 1
+    ├── 2.mp3           # Audio file for history ID 2
+    └── ...
+```
 
 ## Integration Notes
 
@@ -361,10 +395,21 @@ export AIVIS_API_KEY=your_api_key
 ./aivis-cli --log-level=DEBUG --log-format=json models search "voice" --limit 3
 ./aivis-cli -v --log-output=/tmp/aivis.log tts synthesize "テスト" model-uuid test.wav
 
+# TTS History management
+./aivis-cli tts history list --limit 10
+./aivis-cli tts history show 5
+./aivis-cli tts history play 5
+./aivis-cli tts history delete 5 --force
+./aivis-cli tts history clean --older-than 30
+./aivis-cli tts history stats
+
 # Configuration file logging setup (~/.aivis-cli.yaml)
 # log_level: "DEBUG"  
 # log_output: "/var/log/aivis.log"
 # log_format: "json"
+# history_enabled: true
+# history_max_count: 100
+# history_store_path: "/custom/path/to/history"
 ```
 
 ### MCP (Model Context Protocol) Server
@@ -473,6 +518,7 @@ When working in this codebase:
 - `packages/cli/mcp_tools_*.go`: Individual MCP tool implementations
 - `packages/client/client.go`: Main client facade combining all functionality
 - `packages/client/config/config.go`: Configuration management with validation
+- `packages/cli/tts_history.go`: TTS history management commands
 
 ### MCP stdio Mode Implementation Details
 

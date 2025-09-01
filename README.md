@@ -6,6 +6,15 @@ Aivis Cloud API を使用した音声合成・音声再生のコマンドライ�
 
 **公式サイト**: https://aivis-project.com/
 
+## 主な機能
+
+- **音声合成 (TTS)** - テキストから高品質音声ファイルを生成
+- **音声再生** - 合成した音声をその場で再生（Windows/macOS/Linux対応）  
+- **履歴管理** - TTS合成履歴の自動保存・管理・再生（Resume機能）
+- **モデル検索** - 利用可能な音声モデルの検索・取得
+- **MCP対応** - Claude CodeなどAIアシスタントからのストリーミング音声合成（stdio/http）
+- **設定管理** - APIキー、デフォルト値、履歴設定の管理
+
 ## 使い方
 
 **詳細な機能説明・使用例・MCP設定などは [npm パッケージのREADME](./packages/npm/README.md) をご確認ください。**
@@ -27,10 +36,14 @@ npm で配布される CLI ツール。**機能詳細・使用例・MCP設定は
 
 使用例:
 ```bash
-# 例1: テキストから音声ファイルを生成
+# 例1: テキストから音声ファイルを生成（履歴自動保存）
 npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.wav"
 
-# 例2: Claude CodeにMCPを登録（AIアシスタントがストリーミング音声合成・即座再生可能）
+# 例2: TTS履歴の管理・再生
+npx @kajidog/aivis-cloud-cli tts history list    # 履歴一覧表示
+npx @kajidog/aivis-cloud-cli tts history play 1  # ID=1の履歴を再生
+
+# 例3: Claude CodeにMCPを登録（AIアシスタントがストリーミング音声合成・即座再生可能）
 claude mcp add aivis npx @kajidog/aivis-cloud-cli mcp
 ```
 
