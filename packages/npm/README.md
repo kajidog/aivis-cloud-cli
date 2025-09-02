@@ -4,6 +4,16 @@ Aivis Cloud API を使用して音声合成と音声再生を行うコマンド�
 
 **公式サイト**: https://aivis-project.com/
 
+## 目次
+
+- クイックスタート（CLI / MCP）
+- 再生ポリシー（共通の考え方）
+- CLI コマンド概要
+- MCP ツール概要
+- 設定（よく使う項目 / 一覧 / 優先度）
+- トラブルシュート（再生できない/0バイト/ffplay）
+- FFplay の導入（任意・推奨）
+
 ## このパッケージでできること
 
 - **音声合成（TTS）**: テキストを自然な音声に変換
@@ -48,7 +58,54 @@ Aivis Cloud API キーが必要です。
 2. コマンドフラグ: `--api-key "your-api-key"`
 3. 設定ファイル: `aivis-cloud-cli config set api_key "your-api-key"`
 
-## 基本的な使い方
+## クイックスタート
+
+### CLI（最短手順）
+
+```bash
+# インストール不要
+npx @kajidog/aivis-cloud-cli tts play --text "こんにちは世界"
+# 履歴から再生
+npx @kajidog/aivis-cloud-cli tts history play 1
+```
+
+### MCP（最短手順）
+
+```bash
+# Claude などに MCP サーバーを追加
+claude mcp add aivis "npx @kajidog/aivis-cloud-cli mcp"
+
+# ツール呼び出し（例）
+# synthesize_speech: text / playback_mode / wait_for_end などを渡す
+```
+
+## CLI コマンド概要
+
+- `tts synthesize`: テキスト→音声ファイル保存（履歴自動保存）
+- `tts play`: テキストを即時再生（既定で履歴保存）
+- `tts history`: 履歴の一覧/詳細/再生/削除/統計
+- `config`: API キーやデフォルト値の設定/表示
+- `models`: モデルの検索/取得
+- `mcp`: MCP サーバー起動（stdio/http）
+
+詳細な例は「基本的な使い方（詳細）」を参照。
+
+## MCP ツール概要
+
+- 合成/再生系: `synthesize_speech`（または簡略モード時 `play_text`）
+  - 主な引数: `text`, `playback_mode`, `wait_for_end`, `format`, `volume` など
+  - レスポンスの補助情報: `Playback Mode`, `Streaming Synthesis`, `Streaming Playback`
+- 履歴系: `list_tts_history`, `get_tts_history`, `play_tts_history`, `delete_tts_history`, `get_tts_history_stats`
+  - `play_tts_history`: 既存ファイルをそのまま OS プレイヤーで再生
+
+## 再生ポリシー（共通の考え方）
+
+- 再生モード: `immediate`（既存停止）/ `queue`（順次）/ `no_queue`（並列）
+- ストリーミング再生: ffplay（Win/Linux）や afplay（macOS）が使えると低遅延。「Streaming Playback: true」で確認
+- 履歴: 合成時に自動保存。履歴からの再生は「既存ファイルをそのまま再生」
+- 既定: デフォルト音声フォーマットは `mp3`
+
+## 基本的な使い方（詳細）
 
 ### 音声合成（TTS）
 
@@ -142,15 +199,15 @@ npx @kajidog/aivis-cloud-cli tts synthesize "こんにちは世界"
 # 履歴一覧表示
 npx @kajidog/aivis-cloud-cli tts history list
 # ID  Text          Model     Format  Size    Created
-# 1   こんにちは世界  a59cb...  wav     45KB    01/01 12:00
+# 1   こんにちは世界  a59cb...  mp3     45KB    01/01 12:00
 
 # 履歴詳細表示（リクエスト内容、ファイル情報など）
 npx @kajidog/aivis-cloud-cli tts history show 1
 # Text: こんにちは世界
 # Model UUID: a59cb814-0083-4369-8542-f51a29e72af7
 # Created: 2025-01-01 12:00:00
-# File Path: tts_20250101_120000.wav
-# File Format: wav
+# File Path: tts_20250101_120000.mp3
+# File Format: mp3
 # File Size: 45.2 KB
 # Credits Used: 0.0050
 # 
@@ -502,7 +559,7 @@ update_mcp_settings({
 
 </details>
 
-## 再生モードと動作の詳細
+## 再生ポリシー（詳説）
 
 - **immediate**: 現在の再生を停止し、即座に新規音声を再生（キューもクリア）
 - **queue**: 現在の再生を維持し、キューに追加して順次再生（`wait_for_end=true` で完了待機）
@@ -512,7 +569,7 @@ update_mcp_settings({
 - MCP/stdio 実行時は子プロセスの標準出力を抑止し、標準エラーにログを出力します（プロトコル保護）
 - `AIVIS_KEEP_PLAYBACK_FILES=1` で再生用の一時ファイルを削除せず残せます（デバッグ用途）
 
-## ストリーミング再生とプログレッシブ再生のポリシー
+### ストリーミング/プログレッシブ
 
 - ffplay が利用可能な環境では、標準入力（stdin）ストリーミング再生を優先します
   - 例: `ffplay -loglevel error -nodisp -autoexit -volume <0-100> -i -`
@@ -530,8 +587,12 @@ update_mcp_settings({
 
 ffplay は FFmpeg に同梱される小型プレイヤーで、標準入力からの再生に対応します。導入済みの環境では、低遅延で安定したストリーミング再生を自動的に使用します。
 
-- 推奨: Windows では導入を推奨（未導入時は生成完了後の再生にフォールバック）
-- 必須事項: `ffplay` に PATH が通っている必要があります。導入後はターミナル（やアプリ）を再起動して PATH を反映してください。
+- 導入は簡単: 各OSでワンライナーのセットアップ（下記手順）
+- 推奨: Windows では導入を強く推奨（未導入時は生成完了後の再生にフォールバック）
+- 必須事項: `ffplay` に PATH が通っている必要があります（導入後に端末/アプリ再起動）
+- 導入確認は2通り:
+  - `ffplay -version` が表示される
+  - MCPの再生レスポンスに `Streaming Playback: true` が出る（低遅延ストリーミング有効の目印）
 
 <details>
 <summary>FFplay の導入手順と PATH 反映</summary>
@@ -569,6 +630,18 @@ ffplay -version
 
 </details>
 
+### MCPでの再生方式の確認
+
+MCPの TTS ツール（例: `synthesize_speech`, `play_text`, `play_tts_history`）のレスポンスには、以下の行が含まれます。
+
+```
+Streaming Synthesis: true
+Streaming Playback: true
+```
+
+- `Streaming Playback: true` の場合、低遅延のストリーミング再生が有効です（Windows/Linux では ffplay、macOS では afplay 利用など）。
+- Windows で `false` の場合は ffplay 未導入の可能性があります。FFplay を導入すると `true` になります。
+
 ## 対応プラットフォーム
 
 以下のプラットフォーム用のバイナリが含まれています：
@@ -586,6 +659,17 @@ ffplay -version
 - デフォルト: `~/.aivis-cli.yaml`
 - カスタム: `--config` フラグで指定
 
+### よく使う設定（抜粋）
+
+| 設定名                  | 目的                                  | 例                                  |
+| ----------------------- | ------------------------------------- | ----------------------------------- |
+| `api_key`               | APIキーの設定                         | `aivis-cloud-cli config set api_key ...` |
+| `default_model_uuid`    | 既定の音声モデル                      | `... config set default_model_uuid ...` |
+| `default_format`        | 既定の音声フォーマット                | `mp3`（推奨）                        |
+| `default_playback_mode` | 既定の再生モード                      | `immediate` / `queue` / `no_queue`  |
+| `history_store_path`    | 履歴の保存ディレクトリ                | `~/.aivis-cli/history/`             |
+| `log_level`             | ログレベル                            | `INFO` / `DEBUG` など               |
+
 <details>
 <summary>利用可能なパラメータ一覧（クリックで展開）</summary>
 
@@ -596,7 +680,7 @@ ffplay -version
 | `timeout`                  | string  | `60s`                           | HTTP リクエストのタイムアウト              |
 | `default_playback_mode`    | string  | `immediate`                     | デフォルトの音声再生モード                 |
 | `default_model_uuid`       | string  | -                               | デフォルト音声モデル UUID                  |
-| `default_format`           | string  | `wav`                           | デフォルト音声フォーマット                 |
+| `default_format`           | string  | `mp3`                           | デフォルト音声フォーマット                 |
 | `default_volume`           | float64 | `1.0`                           | デフォルト音量（0.0-2.0）                  |
 | `default_rate`             | float64 | `1.0`                           | デフォルト再生速度（0.5-2.0）              |
 | `default_pitch`            | float64 | `0.0`                           | デフォルトピッチ（-1.0 から 1.0）          |
@@ -614,6 +698,8 @@ ffplay -version
 | `log_level`                | string  | `INFO`                          | ログレベル（DEBUG, INFO, WARN, ERROR）     |
 | `log_output`               | string  | `stdout`                        | ログ出力先（stdout, stderr, ファイルパス） |
 | `log_format`               | string  | `text`                          | ログ形式（text, json）                     |
+
+</details>
 
 ### 設定の優先度
 
@@ -653,7 +739,8 @@ npx @kajidog/aivis-cloud-cli mcp --transport http
 
 これにより、Claude Desktop や他の MCP クライアントとの通信が正常に行われます。
 
-#### 設定例
+<details>
+<summary>設定例（クリックで展開）</summary>
 
 ```yaml
 api_key: "your-api-key"
@@ -661,7 +748,7 @@ base_url: "https://api.aivis-project.com"
 timeout: "60s"
 default_playback_mode: "immediate"
 default_model_uuid: "a59cb814-0083-4369-8542-f51a29e72af7"
-default_format: "wav"
+default_format: "mp3"
 default_volume: 1.0
 default_rate: 1.0
 default_pitch: 0.0
@@ -680,6 +767,8 @@ log_level: "INFO"
 log_output: "stdout"
 log_format: "text"
 ```
+
+</details>
 
 ## 環境変数
 

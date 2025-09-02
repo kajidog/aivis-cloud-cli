@@ -1,13 +1,14 @@
 package usecase
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strconv"
-	"time"
+    "context"
+    "fmt"
+    "io"
+    "bytes"
+    "os"
+    "path/filepath"
+    "strconv"
+    "time"
 
 	"github.com/kajidog/aivis-cloud-cli/client/common/http"
 	"github.com/kajidog/aivis-cloud-cli/client/config"
@@ -219,18 +220,25 @@ func (m *TTSHistoryManager) PlayHistory(ctx context.Context, id int, playbackOpt
 			Build()
 	}
 
-	// Open the audio file
-	file, err := os.Open(history.FilePath)
-	if err != nil {
-		return fmt.Errorf("failed to open audio file: %w", err)
-	}
-	defer file.Close()
+    // Open and fully read the audio file to avoid premature close/truncation
+    f, err := os.Open(history.FilePath)
+    if err != nil {
+        return fmt.Errorf("failed to open audio file: %w", err)
+    }
+    data, err := io.ReadAll(f)
+    f.Close()
+    if err != nil {
+        return fmt.Errorf("failed to read audio file: %w", err)
+    }
 
-	// Determine the output format from file extension
-	format := domain.OutputFormat(history.FileFormat)
+    // Determine the output format from file extension
+    format := domain.OutputFormat(history.FileFormat)
 
-	// Play the audio file
-	return m.audioPlayer.Play(ctx, file, format)
+    // Detach playback from request context to allow asynchronous completion
+    playbackCtx := context.Background()
+
+    // Play from in-memory buffer for stability
+    return m.audioPlayer.Play(playbackCtx, bytes.NewReader(data), format)
 }
 
 // DeleteHistory removes a history record

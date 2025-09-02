@@ -739,7 +739,7 @@ func (s *GlobalAudioPlayerService) synthesizeAndPlayStreamSyncWithHistory(ctx co
 // Helper functions
 
 func getOutputFormat(request *domain.PlaybackRequest) domain.OutputFormat {
-	format := domain.OutputFormatWAV // default
+    format := domain.OutputFormatMP3 // default
 	if request.TTSRequest.OutputFormat != nil {
 		format = *request.TTSRequest.OutputFormat
 	}

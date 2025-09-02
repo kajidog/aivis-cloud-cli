@@ -131,7 +131,23 @@ func (c *Config) WithHistoryStorePath(path string) *Config {
 // GetHistoryStorePath returns the full path for history storage
 func (c *Config) GetHistoryStorePath() (string, error) {
 	if c.HistoryStorePath != "" {
-		return c.HistoryStorePath, nil
+		p := c.HistoryStorePath
+		// Expand environment variables
+		p = os.ExpandEnv(p)
+		// Expand leading ~ to user home
+		if strings.HasPrefix(p, "~") {
+			homeDir, err := os.UserHomeDir()
+			if err == nil {
+				p = filepath.Join(homeDir, strings.TrimPrefix(p, "~"))
+			}
+		}
+		// Make absolute if necessary
+		if !filepath.IsAbs(p) {
+			if abs, err := filepath.Abs(p); err == nil {
+				p = abs
+			}
+		}
+		return p, nil
 	}
 	
 	// Use default user home directory

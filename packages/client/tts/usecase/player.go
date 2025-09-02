@@ -260,7 +260,7 @@ func (s *AudioPlayerService) synthesizeAndPlay(ctx context.Context, request *dom
 	}
 	
 	// Determine output format
-	format := domain.OutputFormatWAV // default
+    format := domain.OutputFormatMP3 // default
 	if request.TTSRequest.OutputFormat != nil {
 		format = *request.TTSRequest.OutputFormat
 	}

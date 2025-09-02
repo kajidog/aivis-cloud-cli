@@ -1,10 +1,11 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"strings"
-	"time"
+    "context"
+    "fmt"
+    "os"
+    "strings"
+    "time"
 
 	ttsDomain "github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -165,8 +166,14 @@ func handleListTTSHistory(ctx context.Context, req *mcp.CallToolRequest, args Li
 			model = model[:12] + "..."
 		}
 
-		// Format file size compactly
-		size := formatFileSize(history.FileSizeBytes)
+        // Format file size compactly (prefer actual file size if available)
+        sizeBytes := history.FileSizeBytes
+        if history.FilePath != "" {
+            if fi, err := os.Stat(history.FilePath); err == nil {
+                sizeBytes = fi.Size()
+            }
+        }
+        size := formatFileSize(sizeBytes)
 
 		// Format creation time compactly
 		created := history.CreatedAt.Format("01/02 15:04")
@@ -212,8 +219,15 @@ func handleGetTTSHistory(ctx context.Context, req *mcp.CallToolRequest, args Get
 	result.WriteString(fmt.Sprintf("Text: %s\n", history.Text))
 	result.WriteString(fmt.Sprintf("Model UUID: %s\n", history.ModelUUID))
 	result.WriteString(fmt.Sprintf("Created: %s\n", history.CreatedAt.Format("2006-01-02 15:04:05")))
-	result.WriteString(fmt.Sprintf("File: %s (%s, %s)\n", 
-		history.FileFormat, formatFileSize(history.FileSizeBytes), history.FilePath))
+    // Prefer actual file size if available
+    sizeBytes := history.FileSizeBytes
+    if history.FilePath != "" {
+        if fi, err := os.Stat(history.FilePath); err == nil {
+            sizeBytes = fi.Size()
+        }
+    }
+    result.WriteString(fmt.Sprintf("File: %s (%s, %s)\n", 
+        history.FileFormat, formatFileSize(sizeBytes), history.FilePath))
 
 	if history.Credits != nil {
 		result.WriteString(fmt.Sprintf("Credits: %.4f\n", *history.Credits))
@@ -299,28 +313,21 @@ func handlePlayTTSHistory(ctx context.Context, req *mcp.CallToolRequest, args Pl
 		}
 	}
 
-	// Create playback request with default values
-	playbackBuilder := aivisClient.NewPlaybackRequest(nil). // Request will be retrieved from history
-		WithWaitForEnd(args.WaitForEnd)
+    // Force MCP history playback mode to no_queue for reliability
+    playbackMode := "no_queue"
+    // Allow wait_for_end to be controlled by the request argument
+    waitForEnd := args.WaitForEnd
 
-	if args.Volume > 0 {
-		playbackBuilder = playbackBuilder.WithVolume(args.Volume)
-	}
+    // Create playback request with enforced mode and requested wait behavior
+    playbackBuilder := aivisClient.NewPlaybackRequest(nil). // Request will be retrieved from history
+        WithWaitForEnd(waitForEnd)
 
-	// Set playback mode with sensible default for MCP
-	playbackMode := args.PlaybackMode
-	if playbackMode == "" {
-		playbackMode = "immediate" // Default to immediate for MCP
-	}
-	
-	switch playbackMode {
-	case "immediate":
-		playbackBuilder = playbackBuilder.WithMode(ttsDomain.PlaybackModeImmediate)
-	case "queue":
-		playbackBuilder = playbackBuilder.WithMode(ttsDomain.PlaybackModeQueue)
-	case "no_queue":
-		playbackBuilder = playbackBuilder.WithMode(ttsDomain.PlaybackModeNoQueue)
-	}
+    if args.Volume > 0 {
+        playbackBuilder = playbackBuilder.WithVolume(args.Volume)
+    }
+
+    // Enforce no_queue mode
+    playbackBuilder = playbackBuilder.WithMode(ttsDomain.PlaybackModeNoQueue)
 
 	playbackOptions := playbackBuilder.Build()
 
@@ -346,37 +353,48 @@ func handlePlayTTSHistory(ctx context.Context, req *mcp.CallToolRequest, args Pl
 	result.WriteString(fmt.Sprintf("Playing TTS history record #%d\n\n", args.ID))
 	result.WriteString(fmt.Sprintf("Text: %s\n", history.Text))
 	result.WriteString(fmt.Sprintf("Model: %s\n", history.ModelUUID))
-	result.WriteString(fmt.Sprintf("Format: %s (%s)\n", history.FileFormat, formatFileSize(history.FileSizeBytes)))
+    // Prefer actual file size if available
+    sizeBytes2 := history.FileSizeBytes
+    if history.FilePath != "" {
+        if fi, err := os.Stat(history.FilePath); err == nil {
+            sizeBytes2 = fi.Size()
+        }
+    }
+    result.WriteString(fmt.Sprintf("Format: %s (%s)\n", history.FileFormat, formatFileSize(sizeBytes2)))
 	
-	if args.Volume > 0 {
-		result.WriteString(fmt.Sprintf("Volume: %.2f\n", args.Volume))
-	}
-	result.WriteString(fmt.Sprintf("Playback Mode: %s\n", playbackMode))
+    if args.Volume > 0 {
+        result.WriteString(fmt.Sprintf("Volume: %.2f\n", args.Volume))
+    }
+    result.WriteString(fmt.Sprintf("Playback Mode: %s\n", playbackMode))
+    // Detect accurate streaming playback capability via client logic
+    sp := aivisClient.DetectStreamingPlayback(ttsDomain.OutputFormat(history.FileFormat))
+    result.WriteString("Streaming Synthesis: false\n")
+    result.WriteString(fmt.Sprintf("Streaming Playback: %t\n", sp))
 	
-	if args.WaitForEnd {
-		result.WriteString("\nWaiting for playback completion...")
-		// Wait for playback to complete
-		for {
-			status := aivisClient.GetPlaybackStatus()
-			if status.Status == ttsDomain.PlaybackStatusIdle || 
-			   status.Status == ttsDomain.PlaybackStatusStopped {
-				break
-			}
-			// Short sleep to avoid busy waiting
-			select {
-			case <-ctx.Done():
-				return &mcp.CallToolResult{
-					Content: []mcp.Content{&mcp.TextContent{Text: "Context cancelled while waiting for playback completion"}},
-					IsError: true,
-				}, nil, nil
-			case <-time.After(100 * time.Millisecond):
-				continue
-			}
-		}
-		result.WriteString("\nAudio playback completed")
-	} else {
-		result.WriteString("\nAudio is now playing on the server")
-	}
+    if waitForEnd {
+        result.WriteString("\nWaiting for playback completion...")
+        // Wait for playback to complete
+        for {
+            status := aivisClient.GetPlaybackStatus()
+            if status.Status == ttsDomain.PlaybackStatusIdle || 
+               status.Status == ttsDomain.PlaybackStatusStopped {
+                break
+            }
+            // Short sleep to avoid busy waiting
+            select {
+            case <-ctx.Done():
+                return &mcp.CallToolResult{
+                    Content: []mcp.Content{&mcp.TextContent{Text: "Context cancelled while waiting for playback completion"}},
+                    IsError: true,
+                }, nil, nil
+            case <-time.After(100 * time.Millisecond):
+                continue
+            }
+        }
+        result.WriteString("\nAudio playback completed")
+    } else {
+        result.WriteString("\nAudio is now playing on the server")
+    }
 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
@@ -457,4 +475,3 @@ func handleGetTTSHistoryStats(ctx context.Context, req *mcp.CallToolRequest, arg
 		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
 	}, nil, nil
 }
-

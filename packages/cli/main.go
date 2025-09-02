@@ -84,7 +84,7 @@ func initializeClient() error {
 		return fmt.Errorf("API key is required. Set it via --api-key flag, AIVIS_API_KEY environment variable, or config file")
 	}
 
-	cfg := config.NewConfig(apiKey)
+    cfg := config.NewConfig(apiKey)
 	if baseURL := viper.GetString("base_url"); baseURL != "" {
 		cfg.BaseURL = baseURL
 	}
@@ -113,7 +113,20 @@ func initializeClient() error {
 		cfg.LogFormat = configLogFormat
 	}
 
-	// For MCP stdio mode, force log output to stderr to avoid protocol contamination
+    // History settings
+    if viper.IsSet("history_enabled") {
+        cfg.HistoryEnabled = viper.GetBool("history_enabled")
+    }
+    if viper.IsSet("history_max_count") {
+        if v := viper.GetInt("history_max_count"); v > 0 {
+            cfg.HistoryMaxCount = v
+        }
+    }
+    if v := viper.GetString("history_store_path"); v != "" {
+        cfg.HistoryStorePath = v
+    }
+
+    // For MCP stdio mode, force log output to stderr to avoid protocol contamination
 	if isMCPStdioMode() {
 		cfg.LogOutput = "stderr"
 	}
