@@ -4,8 +4,10 @@ import (
     "context"
     "fmt"
     "io"
+    "os/exec"
     "os"
     "path/filepath"
+    "runtime"
     "strconv"
     "time"
 
@@ -475,12 +477,71 @@ func (c *Client) PlayStreamWithHistory(ctx context.Context, request *ttsDomain.P
 			logger.String("error", historyErr.Error()))
 	}
 	
-	response := &ttsDomain.TTSResponse{
-		HistoryID: historyID,
-	}
+    // Compute effective playback mode
+    var effMode ttsDomain.PlaybackMode
+    if request != nil && request.Mode != nil {
+        effMode = *request.Mode
+    } else {
+        // For history-safe default paths we queue by default
+        effMode = ttsDomain.PlaybackModeQueue
+    }
+
+    // Determine output format from request
+    outFmt := ttsDomain.OutputFormatWAV
+    if request != nil && request.TTSRequest != nil && request.TTSRequest.OutputFormat != nil {
+        outFmt = *request.TTSRequest.OutputFormat
+    }
+
+    // Detect streaming playback capability (stdin or progressive)
+    streamingPlayback := detectStreamingPlayback(outFmt)
+
+    response := &ttsDomain.TTSResponse{
+        HistoryID:          historyID,
+        StreamingSynthesis: true,
+        StreamingPlayback:  streamingPlayback,
+        EffectiveMode:      &effMode,
+    }
 	
 	c.logger.Info("Single-pass streaming synthesis with concurrent operations completed successfully")
 	return response, nil
+}
+
+// detectStreamingPlayback determines whether playback is expected to be streaming/progressive
+// based on OS player availability and output format. This mirrors the logic in the
+// OSCommandAudioPlayer implementation.
+func detectStreamingPlayback(format ttsDomain.OutputFormat) bool {
+    // stdin streaming supported?
+    stdin := false
+    switch runtime.GOOS {
+    case "darwin":
+        if _, err := exec.LookPath("afplay"); err == nil {
+            stdin = true
+        }
+    case "linux":
+        if _, err := exec.LookPath("ffplay"); err == nil {
+            stdin = true
+        }
+    }
+
+    // progressive from growing file supported?
+    progressive := false
+    switch format {
+    case ttsDomain.OutputFormatMP3, ttsDomain.OutputFormatAAC, ttsDomain.OutputFormatOpus:
+        progressive = true
+        // Windows without ffplay: disable progressive due to unreliability
+        if runtime.GOOS == "windows" {
+            if _, err := exec.LookPath("ffplay"); err != nil {
+                progressive = false
+            }
+        }
+    }
+
+    return stdin || progressive
+}
+
+// DetectStreamingPlayback exposes playback streaming capability detection
+func (c *Client) DetectStreamingPlayback(format ttsDomain.OutputFormat) bool {
+    return detectStreamingPlayback(format)
 }
 
 // playbackStreamHandler handles streaming audio for immediate playback
@@ -497,11 +558,11 @@ func (h *playbackStreamHandler) OnChunk(chunk *ttsDomain.TTSStreamChunk) error {
 	if !h.started && h.playbackReq.TTSRequest != nil {
 		h.started = true
 		
-		// Check if output format is MP3 (supports streaming)
-		format := ttsDomain.OutputFormatWAV // default
-		if h.playbackReq.TTSRequest.OutputFormat != nil {
-			format = *h.playbackReq.TTSRequest.OutputFormat
-		}
+        // Check if output format is MP3 (supports streaming)
+        format := ttsDomain.OutputFormatMP3 // default
+        if h.playbackReq.TTSRequest.OutputFormat != nil {
+            format = *h.playbackReq.TTSRequest.OutputFormat
+        }
 		
 		// Only enable progressive playback for MP3 format
 		if format == ttsDomain.OutputFormatMP3 {

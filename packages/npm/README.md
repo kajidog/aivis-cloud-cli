@@ -142,15 +142,15 @@ npx @kajidog/aivis-cloud-cli tts synthesize "こんにちは世界"
 # 履歴一覧表示
 npx @kajidog/aivis-cloud-cli tts history list
 # ID  Text          Model     Format  Size    Created
-# 1   こんにちは世界  a59cb...  wav     45KB    01/01 12:00
+# 1   こんにちは世界  a59cb...  mp3     45KB    01/01 12:00
 
 # 履歴詳細表示（リクエスト内容、ファイル情報など）
 npx @kajidog/aivis-cloud-cli tts history show 1
 # Text: こんにちは世界
 # Model UUID: a59cb814-0083-4369-8542-f51a29e72af7
 # Created: 2025-01-01 12:00:00
-# File Path: tts_20250101_120000.wav
-# File Format: wav
+# File Path: tts_20250101_120000.mp3
+# File Format: mp3
 # File Size: 45.2 KB
 # Credits Used: 0.0050
 # 
@@ -596,7 +596,7 @@ ffplay -version
 | `timeout`                  | string  | `60s`                           | HTTP リクエストのタイムアウト              |
 | `default_playback_mode`    | string  | `immediate`                     | デフォルトの音声再生モード                 |
 | `default_model_uuid`       | string  | -                               | デフォルト音声モデル UUID                  |
-| `default_format`           | string  | `wav`                           | デフォルト音声フォーマット                 |
+| `default_format`           | string  | `mp3`                           | デフォルト音声フォーマット                 |
 | `default_volume`           | float64 | `1.0`                           | デフォルト音量（0.0-2.0）                  |
 | `default_rate`             | float64 | `1.0`                           | デフォルト再生速度（0.5-2.0）              |
 | `default_pitch`            | float64 | `0.0`                           | デフォルトピッチ（-1.0 から 1.0）          |
@@ -661,7 +661,7 @@ base_url: "https://api.aivis-project.com"
 timeout: "60s"
 default_playback_mode: "immediate"
 default_model_uuid: "a59cb814-0083-4369-8542-f51a29e72af7"
-default_format: "wav"
+default_format: "mp3"
 default_volume: 1.0
 default_rate: 1.0
 default_pitch: 0.0

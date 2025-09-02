@@ -87,6 +87,12 @@ jobs:
             
             ### Direct binary download
             Download the appropriate binary for your platform from the assets below and add it to your PATH.
-          files: packages/npm/binaries/*/*
+          files: |
+            packages/npm/binaries/linux-amd64/aivis-cli
+            packages/npm/binaries/linux-arm64/aivis-cli
+            packages/npm/binaries/darwin-amd64/aivis-cli
+            packages/npm/binaries/darwin-arm64/aivis-cli
+            packages/npm/binaries/windows-amd64/aivis-cli.exe
+            packages/npm/binaries/windows-arm64/aivis-cli.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

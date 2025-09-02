@@ -71,10 +71,10 @@ func (a *AudioPlayerServiceAdapter) GetGlobalService() *GlobalAudioPlayerService
 
 // getOutputFormatFromRequest extracts output format from playback request
 func getOutputFormatFromRequest(request *domain.PlaybackRequest) domain.OutputFormat {
-	if request.TTSRequest != nil && request.TTSRequest.OutputFormat != nil {
-		return *request.TTSRequest.OutputFormat
-	}
-	return domain.OutputFormatWAV // default
+    if request.TTSRequest != nil && request.TTSRequest.OutputFormat != nil {
+        return *request.TTSRequest.OutputFormat
+    }
+    return domain.OutputFormatMP3 // default
 }
 
 // Stop stops current playback and clears queue

@@ -139,9 +139,9 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 
 	// Set output format with config default
 	format := args.Format
-	if format == "" {
-		format = viper.GetString("default_format")
-	}
+    if format == "" {
+        format = viper.GetString("default_format")
+    }
 	if format != "" {
 		switch format {
 		case "wav":
@@ -188,9 +188,9 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	
 	// Generate filename and save to history directory (absolute path)
 	timestamp := time.Now().Format("20060102_150405")
-	if format == "" {
-		format = "wav"
-	}
+    if format == "" {
+        format = "mp3"
+    }
 	
 	// Get history directory from config or use default
 	historyDir := viper.GetString("history_store_path")
@@ -237,8 +237,8 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 		}
 	}
 
-	// Format response with playback info including history ID
-	resultText := "Audio synthesized and played successfully\n"
+    // Format response with playback info including history ID
+    resultText := "Audio synthesized and played successfully\n"
 	if response.HistoryID > 0 {
 		resultText += fmt.Sprintf("History ID: %d\n", response.HistoryID)
 	} else {
@@ -249,9 +249,12 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	if args.SSML {
 		resultText += "SSML: enabled\n"
 	}
-	if format != "" {
-		resultText += fmt.Sprintf("Format: %s\n", format)
-	}
+    if format != "" {
+        resultText += fmt.Sprintf("Format: %s\n", format)
+    }
+    // Use authoritative values from client response
+    resultText += fmt.Sprintf("Streaming Synthesis: %t\n", response.StreamingSynthesis)
+    resultText += fmt.Sprintf("Streaming Playback: %t\n", response.StreamingPlayback)
 	if args.Channels != "" {
 		resultText += fmt.Sprintf("Channels: %s\n", args.Channels)
 	}
@@ -367,10 +370,10 @@ func handlePlayText(ctx context.Context, req *mcp.CallToolRequest, args PlayText
 	playbackReq = playbackReq.WithWaitForEnd(waitForEnd)
 	
 	// Get format from config for file naming
-	format := viper.GetString("default_format")
-	if format == "" {
-		format = "wav"
-	}
+    format := viper.GetString("default_format")
+    if format == "" {
+        format = "mp3"
+    }
 	
 	// Generate filename and save to history directory (absolute path)
 	timestamp := time.Now().Format("20060102_150405")
@@ -420,17 +423,23 @@ func handlePlayText(ctx context.Context, req *mcp.CallToolRequest, args PlayText
 		}
 	}
 
-	// Format response including history ID
-	var resultText string
+    // Format response including history ID
+    var resultText string
 	if response.HistoryID > 0 {
 		resultText = fmt.Sprintf("History ID: %d\n", response.HistoryID)
 	} else {
 		resultText = "History ID: (not saved - check history configuration)\n"
 	}
 	resultText += fmt.Sprintf("Text: %s\n", args.Text)
-	if playbackMode != "" {
-		resultText += fmt.Sprintf("Playback Mode: %s\n", playbackMode)
-	}
+    // Prefer effective mode from client if available
+    if response.EffectiveMode != nil {
+        resultText += fmt.Sprintf("Playback Mode: %s\n", string(*response.EffectiveMode))
+    } else if playbackMode != "" {
+        resultText += fmt.Sprintf("Playback Mode: %s\n", playbackMode)
+    }
+    // Explicitly include playback characteristics for MCP clients from client response
+    resultText += fmt.Sprintf("Streaming Synthesis: %t\n", response.StreamingSynthesis)
+    resultText += fmt.Sprintf("Streaming Playback: %t\n", response.StreamingPlayback)
 	if args.WaitForEnd {
 		resultText += "Audio playback completed"
 	} else {

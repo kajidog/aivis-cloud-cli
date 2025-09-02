@@ -70,10 +70,14 @@ type TTSRequest struct {
 
 // TTSResponse represents a text-to-speech synthesis response
 type TTSResponse struct {
-	AudioData   io.ReadCloser     `json:"-"`
-	BillingInfo *http.BillingInfo `json:"billing_info,omitempty"`
-	FileName    string            `json:"filename,omitempty"`
-	HistoryID   int               `json:"history_id,omitempty"` // Sequential ID for history management
+    AudioData   io.ReadCloser     `json:"-"`
+    BillingInfo *http.BillingInfo `json:"billing_info,omitempty"`
+    FileName    string            `json:"filename,omitempty"`
+    HistoryID   int               `json:"history_id,omitempty"` // Sequential ID for history management
+    // Playback characteristics (authoritative, computed by client)
+    StreamingSynthesis bool          `json:"streaming_synthesis,omitempty"`
+    StreamingPlayback  bool          `json:"streaming_playback,omitempty"`
+    EffectiveMode      *PlaybackMode `json:"effective_mode,omitempty"`
 }
 
 // TTSStreamChunk represents a chunk of streaming audio data

@@ -46,7 +46,7 @@ npm で配布される CLI ツール。**機能詳細・使用例・MCP設定は
 使用例:
 ```bash
 # 例1: テキストから音声ファイルを生成（履歴自動保存）
-npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.wav"
+npx @kajidog/aivis-cloud-cli tts synthesize --text "こんにちは世界" --output "output.mp3"
 
 # 例2: TTS履歴の管理・再生
 npx @kajidog/aivis-cloud-cli tts history list    # 履歴一覧表示

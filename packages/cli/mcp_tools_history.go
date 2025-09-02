@@ -348,10 +348,14 @@ func handlePlayTTSHistory(ctx context.Context, req *mcp.CallToolRequest, args Pl
 	result.WriteString(fmt.Sprintf("Model: %s\n", history.ModelUUID))
 	result.WriteString(fmt.Sprintf("Format: %s (%s)\n", history.FileFormat, formatFileSize(history.FileSizeBytes)))
 	
-	if args.Volume > 0 {
-		result.WriteString(fmt.Sprintf("Volume: %.2f\n", args.Volume))
-	}
-	result.WriteString(fmt.Sprintf("Playback Mode: %s\n", playbackMode))
+    if args.Volume > 0 {
+        result.WriteString(fmt.Sprintf("Volume: %.2f\n", args.Volume))
+    }
+    result.WriteString(fmt.Sprintf("Playback Mode: %s\n", playbackMode))
+    // Detect accurate streaming playback capability via client logic
+    sp := aivisClient.DetectStreamingPlayback(ttsDomain.OutputFormat(history.FileFormat))
+    result.WriteString("Streaming Synthesis: false\n")
+    result.WriteString(fmt.Sprintf("Streaming Playback: %t\n", sp))
 	
 	if args.WaitForEnd {
 		result.WriteString("\nWaiting for playback completion...")
@@ -457,4 +461,3 @@ func handleGetTTSHistoryStats(ctx context.Context, req *mcp.CallToolRequest, arg
 		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
 	}, nil, nil
 }
-

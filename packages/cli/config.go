@@ -83,7 +83,7 @@ func getConfigSpecs() []ConfigSpec {
         {Key: "timeout", Type: "duration", Description: "HTTP timeout (e.g. 60s)", Validate: parseDuration},
         {Key: "default_playback_mode", Type: "enum", Description: "Playback mode (immediate|queue|no_queue)", Validate: parseEnum("immediate", "queue", "no_queue")},
         {Key: "default_model_uuid", Type: "string", Description: "Default voice model UUID", Validate: func(s string) (any, error) { return s, nil }},
-        {Key: "default_format", Type: "enum", Description: "Default audio format (wav|mp3|flac|aac|opus)", Validate: parseEnum("wav", "mp3", "flac", "aac", "opus")},
+        {Key: "default_format", Type: "enum", Description: "Default audio format (mp3|wav|flac|aac|opus)", Validate: parseEnum("wav", "mp3", "flac", "aac", "opus")},
         {Key: "default_channels", Type: "enum", Description: "Audio channels (mono|stereo)", Validate: parseEnum("mono", "stereo")},
         {Key: "default_volume", Type: "number", Description: "Default TTS volume (0.0..2.0)", Validate: parseFloatInRange(0.0, 2.0)},
         {Key: "default_rate", Type: "number", Description: "Default speaking rate (0.5..2.0)", Validate: parseFloatInRange(0.5, 2.0)},
@@ -258,9 +258,9 @@ var configInitCmd = &cobra.Command{
 		if !viper.IsSet("default_model_uuid") {
 			viper.Set("default_model_uuid", "")
 		}
-		if !viper.IsSet("default_format") {
-			viper.Set("default_format", "wav")
-		}
+        if !viper.IsSet("default_format") {
+            viper.Set("default_format", "mp3")
+        }
 		if !viper.IsSet("default_volume") {
 			viper.Set("default_volume", 1.0)
 		}
