@@ -73,6 +73,7 @@ type TTSResponse struct {
 	AudioData   io.ReadCloser     `json:"-"`
 	BillingInfo *http.BillingInfo `json:"billing_info,omitempty"`
 	FileName    string            `json:"filename,omitempty"`
+	HistoryID   int               `json:"history_id,omitempty"` // Sequential ID for history management
 }
 
 // TTSStreamChunk represents a chunk of streaming audio data

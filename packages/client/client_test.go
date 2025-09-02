@@ -226,11 +226,12 @@ func TestSynthesize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Synthesize() error = %v, wantErr %v", err, false)
 	}
-	defer resp.AudioData.Close()
-
+	
 	if resp == nil {
 		t.Fatal("Synthesize() response is nil")
 	}
+	
+	defer resp.AudioData.Close()
 
 	audioData, err := io.ReadAll(resp.AudioData)
 	if err != nil {

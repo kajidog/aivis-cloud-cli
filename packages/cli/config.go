@@ -1,13 +1,118 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"strings"
+    "errors"
+    "fmt"
+    "net/url"
+    "os"
+    "strconv"
+    "strings"
+    "time"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+    "github.com/spf13/cobra"
+    "github.com/spf13/viper"
 )
+
+// ConfigSpec defines an allowed configuration key, its type and validation.
+type ConfigSpec struct {
+    Key         string
+    Type        string
+    Description string
+    Validate    func(string) (any, error)
+}
+
+func parseBool(s string) (any, error) {
+    v, err := strconv.ParseBool(s)
+    if err != nil {
+        return nil, fmt.Errorf("expected boolean (true/false)")
+    }
+    return v, nil
+}
+
+func parseFloatInRange(min, max float64) func(string) (any, error) {
+    return func(s string) (any, error) {
+        f, err := strconv.ParseFloat(s, 64)
+        if err != nil {
+            return nil, fmt.Errorf("expected number")
+        }
+        if f < min || f > max {
+            return nil, fmt.Errorf("value out of range (%.2f..%.2f)", min, max)
+        }
+        return f, nil
+    }
+}
+
+func parseIntPositive(s string) (any, error) {
+    i, err := strconv.Atoi(s)
+    if err != nil || i <= 0 {
+        return nil, fmt.Errorf("expected positive integer")
+    }
+    return i, nil
+}
+
+func parseDuration(s string) (any, error) {
+    d, err := time.ParseDuration(s)
+    if err != nil {
+        return nil, fmt.Errorf("expected duration (e.g. 60s, 2m)")
+    }
+    if d <= 0 {
+        return nil, errors.New("duration must be positive")
+    }
+    return s, nil // store as string to keep file human-friendly
+}
+
+func parseEnum(allowed ...string) func(string) (any, error) {
+    return func(s string) (any, error) {
+        for _, a := range allowed {
+            if s == a {
+                return s, nil
+            }
+        }
+        return nil, fmt.Errorf("invalid value. allowed: %s", strings.Join(allowed, ", "))
+    }
+}
+
+func getConfigSpecs() []ConfigSpec {
+    return []ConfigSpec{
+        {Key: "api_key", Type: "string", Description: "Aivis Cloud API key", Validate: func(s string) (any, error) { return s, nil }},
+        {Key: "base_url", Type: "string", Description: "API base URL", Validate: func(s string) (any, error) {
+            if s == "" { return s, nil }
+            u, err := url.Parse(s); if err != nil || (u.Scheme != "http" && u.Scheme != "https") { return nil, fmt.Errorf("invalid URL") }
+            return s, nil
+        }},
+        {Key: "timeout", Type: "duration", Description: "HTTP timeout (e.g. 60s)", Validate: parseDuration},
+        {Key: "default_playback_mode", Type: "enum", Description: "Playback mode (immediate|queue|no_queue)", Validate: parseEnum("immediate", "queue", "no_queue")},
+        {Key: "default_model_uuid", Type: "string", Description: "Default voice model UUID", Validate: func(s string) (any, error) { return s, nil }},
+        {Key: "default_format", Type: "enum", Description: "Default audio format (wav|mp3|flac|aac|opus)", Validate: parseEnum("wav", "mp3", "flac", "aac", "opus")},
+        {Key: "default_channels", Type: "enum", Description: "Audio channels (mono|stereo)", Validate: parseEnum("mono", "stereo")},
+        {Key: "default_volume", Type: "number", Description: "Default TTS volume (0.0..2.0)", Validate: parseFloatInRange(0.0, 2.0)},
+        {Key: "default_rate", Type: "number", Description: "Default speaking rate (0.5..2.0)", Validate: parseFloatInRange(0.5, 2.0)},
+        {Key: "default_pitch", Type: "number", Description: "Default pitch (-1.0..1.0)", Validate: parseFloatInRange(-1.0, 1.0)},
+        {Key: "default_ssml", Type: "bool", Description: "Enable SSML by default", Validate: parseBool},
+        {Key: "default_emotional_intensity", Type: "number", Description: "Default emotional intensity (0.0..2.0)", Validate: parseFloatInRange(0.0, 2.0)},
+        {Key: "default_tempo_dynamics", Type: "number", Description: "Default tempo dynamics (0.0..2.0)", Validate: parseFloatInRange(0.0, 2.0)},
+        {Key: "default_leading_silence", Type: "number", Description: "Leading silence seconds (0.0..10.0)", Validate: parseFloatInRange(0.0, 10.0)},
+        {Key: "default_trailing_silence", Type: "number", Description: "Trailing silence seconds (0.0..10.0)", Validate: parseFloatInRange(0.0, 10.0)},
+        {Key: "default_wait_for_end", Type: "bool", Description: "Wait for playback completion by default", Validate: parseBool},
+        {Key: "use_simplified_tts_tools", Type: "bool", Description: "Use simplified TTS tools for MCP", Validate: parseBool},
+        {Key: "history_enabled", Type: "bool", Description: "Enable TTS history management", Validate: parseBool},
+        {Key: "history_max_count", Type: "int", Description: "Max history records to keep (>0)", Validate: parseIntPositive},
+        {Key: "history_store_path", Type: "string", Description: "History storage directory", Validate: func(s string) (any, error) { return s, nil }},
+        {Key: "log_level", Type: "enum", Description: "Log level (DEBUG|INFO|WARN|ERROR)", Validate: parseEnum("DEBUG", "INFO", "WARN", "ERROR")},
+        {Key: "log_output", Type: "enum|string", Description: "Log output (stdout|stderr|file path)", Validate: func(s string) (any, error) {
+            if s == "stdout" || s == "stderr" || s == "" { return s, nil }
+            return s, nil
+        }},
+        {Key: "log_format", Type: "enum", Description: "Log format (text|json)", Validate: parseEnum("text", "json")},
+    }
+}
+
+func findSpec(key string) *ConfigSpec {
+    for _, s := range getConfigSpecs() {
+        if s.Key == key { return &s }
+    }
+    return nil
+}
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -60,21 +165,28 @@ var configSetCmd = &cobra.Command{
 	Short: "Set configuration value",
 	Long:  "Set a configuration key-value pair",
 	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		key := args[0]
-		value := args[1]
+    RunE: func(cmd *cobra.Command, args []string) error {
+        key := args[0]
+        raw := args[1]
 
-		// Set the value
-		viper.Set(key, value)
+        spec := findSpec(key)
+        if spec == nil {
+            return fmt.Errorf("unknown key: %s. See 'config keys' for available settings", key)
+        }
 
-		// Save to config file
-		if err := saveConfig(); err != nil {
-			return fmt.Errorf("failed to save configuration: %v", err)
-		}
+        val, err := spec.Validate(raw)
+        if err != nil {
+            return fmt.Errorf("invalid value for %s (%s): %v", key, spec.Type, err)
+        }
 
-		fmt.Printf("Set %s = %s\n", key, value)
-		return nil
-	},
+        viper.Set(key, val)
+        if err := saveConfig(); err != nil {
+            return fmt.Errorf("failed to save configuration: %v", err)
+        }
+
+        fmt.Printf("Set %s = %v\n", key, val)
+        return nil
+    },
 }
 
 var configUnsetCmd = &cobra.Command{
@@ -219,25 +331,51 @@ var configValidateCmd = &cobra.Command{
 			fmt.Println("Warning: base_url is not set, using default")
 		}
 
-		// Validate playback mode if set
-		playbackMode := viper.GetString("default_playback_mode")
-		if playbackMode != "" {
-			validModes := []string{"immediate", "queue", "no_queue"}
-			valid := false
-			for _, mode := range validModes {
-				if playbackMode == mode {
-					valid = true
-					break
-				}
-			}
-			if !valid {
-				return fmt.Errorf("invalid default_playback_mode: %s. Valid values: %s", playbackMode, strings.Join(validModes, ", "))
-			}
-		}
+        // Validate all known keys if set
+        for _, spec := range getConfigSpecs() {
+            if viper.IsSet(spec.Key) {
+                // Convert the stored value to string form for validation where needed
+                var raw string
+                switch vv := viper.Get(spec.Key).(type) {
+                case string:
+                    raw = vv
+                default:
+                    raw = fmt.Sprintf("%v", vv)
+                }
+                if _, err := spec.Validate(raw); err != nil {
+                    return fmt.Errorf("%s: %v", spec.Key, err)
+                }
+            }
+        }
 
 		fmt.Println("Configuration is valid ✓")
 		return nil
 	},
+}
+
+var configKeysCmd = &cobra.Command{
+    Use:   "keys",
+    Short: "List available configuration keys",
+    Long:  "Show all supported configuration keys, expected types, and descriptions.",
+    RunE: func(cmd *cobra.Command, args []string) error {
+        fmt.Println("Available configuration keys:")
+        fmt.Println("--------------------------------")
+        for _, spec := range getConfigSpecs() {
+            current := "(not set)"
+            if viper.IsSet(spec.Key) {
+                current = fmt.Sprintf("current=%v", viper.Get(spec.Key))
+                if spec.Key == "api_key" && viper.GetString(spec.Key) != "" {
+                    current = "current=[REDACTED]"
+                }
+            }
+            fmt.Printf("- %s: %s [%s] %s\n", spec.Key, spec.Description, spec.Type, current)
+        }
+        fmt.Println("\nExamples:")
+        fmt.Println("  aivis-cloud-cli config set default_playback_mode queue")
+        fmt.Println("  aivis-cloud-cli config set timeout 90s")
+        fmt.Println("  aivis-cloud-cli config set default_format mp3")
+        return nil
+    },
 }
 
 func saveConfig() error {
@@ -265,5 +403,6 @@ func init() {
 	configCmd.AddCommand(configUnsetCmd)
 	configCmd.AddCommand(configInitCmd)
 	configCmd.AddCommand(configEditCmd)
-	configCmd.AddCommand(configValidateCmd)
+    configCmd.AddCommand(configValidateCmd)
+    configCmd.AddCommand(configKeysCmd)
 }

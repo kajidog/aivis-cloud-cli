@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 )
@@ -16,6 +18,21 @@ func NewAudioPlayerServiceAdapter(globalService *GlobalAudioPlayerService) *Audi
 	return &AudioPlayerServiceAdapter{
 		globalService: globalService,
 	}
+}
+
+// PlayAudioFile plays an audio file directly (for progressive playback)
+// WARNING: This bypasses the queue system entirely - use with caution
+func (a *AudioPlayerServiceAdapter) PlayAudioFile(ctx context.Context, filePath string, format domain.OutputFormat) error {
+	// Open the file and play using the global service's player
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open audio file: %w", err)
+	}
+	defer file.Close()
+	
+	// ISSUE: This bypasses queue modes (immediate/queue/no_queue)
+	// For proper queue support, should use PlayRequest with pre-synthesized file
+	return a.globalService.player.Play(ctx, file, format)
 }
 
 // PlayText plays text with optional playback options
@@ -39,6 +56,25 @@ func (a *AudioPlayerServiceAdapter) PlayText(ctx context.Context, text, modelUUI
 // PlayRequest plays audio based on the playback request
 func (a *AudioPlayerServiceAdapter) PlayRequest(ctx context.Context, request *domain.PlaybackRequest) error {
 	return a.globalService.PlayRequest(ctx, request)
+}
+
+// PlayRequestWithHistory plays audio with history saving using streaming synthesis
+func (a *AudioPlayerServiceAdapter) PlayRequestWithHistory(ctx context.Context, request *domain.PlaybackRequest, historyFilePath string) error {
+    // Respect playback mode and wait_for_end by delegating to global service
+    return a.globalService.PlayRequestWithHistory(ctx, request, historyFilePath)
+}
+
+// GetGlobalService returns the underlying GlobalAudioPlayerService
+func (a *AudioPlayerServiceAdapter) GetGlobalService() *GlobalAudioPlayerService {
+	return a.globalService
+}
+
+// getOutputFormatFromRequest extracts output format from playback request
+func getOutputFormatFromRequest(request *domain.PlaybackRequest) domain.OutputFormat {
+	if request.TTSRequest != nil && request.TTSRequest.OutputFormat != nil {
+		return *request.TTSRequest.OutputFormat
+	}
+	return domain.OutputFormatWAV // default
 }
 
 // Stop stops current playback and clears queue
