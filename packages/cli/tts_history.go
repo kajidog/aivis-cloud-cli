@@ -72,8 +72,14 @@ var ttsHistoryListCmd = &cobra.Command{
 				model = model[:8] + "..."
 			}
 			
-			// Format file size
-			size := formatFileSize(history.FileSizeBytes)
+            // Format file size (prefer actual file size if available)
+            sizeBytes := history.FileSizeBytes
+            if history.FilePath != "" {
+                if fi, err := os.Stat(history.FilePath); err == nil {
+                    sizeBytes = fi.Size()
+                }
+            }
+            size := formatFileSize(sizeBytes)
 			
 			// Format creation time
 			created := history.CreatedAt.Format("01/02 15:04")
@@ -128,7 +134,14 @@ var ttsHistoryShowCmd = &cobra.Command{
 		fmt.Printf("Created: %s\n", history.CreatedAt.Format("2006-01-02 15:04:05"))
 		fmt.Printf("File Path: %s\n", history.FilePath)
 		fmt.Printf("File Format: %s\n", history.FileFormat)
-		fmt.Printf("File Size: %s\n", formatFileSize(history.FileSizeBytes))
+        // Prefer actual file size if available
+        sizeBytes := history.FileSizeBytes
+        if history.FilePath != "" {
+            if fi, err := os.Stat(history.FilePath); err == nil {
+                sizeBytes = fi.Size()
+            }
+        }
+        fmt.Printf("File Size: %s\n", formatFileSize(sizeBytes))
 		
 		if history.Credits != nil {
 			fmt.Printf("Credits Used: %.4f\n", *history.Credits)

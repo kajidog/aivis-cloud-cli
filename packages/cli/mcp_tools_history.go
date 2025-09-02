@@ -1,10 +1,11 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"strings"
-	"time"
+    "context"
+    "fmt"
+    "os"
+    "strings"
+    "time"
 
 	ttsDomain "github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -165,8 +166,14 @@ func handleListTTSHistory(ctx context.Context, req *mcp.CallToolRequest, args Li
 			model = model[:12] + "..."
 		}
 
-		// Format file size compactly
-		size := formatFileSize(history.FileSizeBytes)
+        // Format file size compactly (prefer actual file size if available)
+        sizeBytes := history.FileSizeBytes
+        if history.FilePath != "" {
+            if fi, err := os.Stat(history.FilePath); err == nil {
+                sizeBytes = fi.Size()
+            }
+        }
+        size := formatFileSize(sizeBytes)
 
 		// Format creation time compactly
 		created := history.CreatedAt.Format("01/02 15:04")
@@ -212,8 +219,15 @@ func handleGetTTSHistory(ctx context.Context, req *mcp.CallToolRequest, args Get
 	result.WriteString(fmt.Sprintf("Text: %s\n", history.Text))
 	result.WriteString(fmt.Sprintf("Model UUID: %s\n", history.ModelUUID))
 	result.WriteString(fmt.Sprintf("Created: %s\n", history.CreatedAt.Format("2006-01-02 15:04:05")))
-	result.WriteString(fmt.Sprintf("File: %s (%s, %s)\n", 
-		history.FileFormat, formatFileSize(history.FileSizeBytes), history.FilePath))
+    // Prefer actual file size if available
+    sizeBytes := history.FileSizeBytes
+    if history.FilePath != "" {
+        if fi, err := os.Stat(history.FilePath); err == nil {
+            sizeBytes = fi.Size()
+        }
+    }
+    result.WriteString(fmt.Sprintf("File: %s (%s, %s)\n", 
+        history.FileFormat, formatFileSize(sizeBytes), history.FilePath))
 
 	if history.Credits != nil {
 		result.WriteString(fmt.Sprintf("Credits: %.4f\n", *history.Credits))
@@ -339,7 +353,14 @@ func handlePlayTTSHistory(ctx context.Context, req *mcp.CallToolRequest, args Pl
 	result.WriteString(fmt.Sprintf("Playing TTS history record #%d\n\n", args.ID))
 	result.WriteString(fmt.Sprintf("Text: %s\n", history.Text))
 	result.WriteString(fmt.Sprintf("Model: %s\n", history.ModelUUID))
-    result.WriteString(fmt.Sprintf("Format: %s (%s)\n", history.FileFormat, formatFileSize(history.FileSizeBytes)))
+    // Prefer actual file size if available
+    sizeBytes2 := history.FileSizeBytes
+    if history.FilePath != "" {
+        if fi, err := os.Stat(history.FilePath); err == nil {
+            sizeBytes2 = fi.Size()
+        }
+    }
+    result.WriteString(fmt.Sprintf("Format: %s (%s)\n", history.FileFormat, formatFileSize(sizeBytes2)))
 	
     if args.Volume > 0 {
         result.WriteString(fmt.Sprintf("Volume: %.2f\n", args.Volume))
