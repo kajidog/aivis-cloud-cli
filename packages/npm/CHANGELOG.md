@@ -1,5 +1,32 @@
 # @kajidog/aivis-cloud-cli
 
+## 0.5.0
+
+### Minor Changes
+
+- 3ff1502: feat: add TTS history management (resume) functionality
+
+  Add comprehensive TTS synthesis history management with sequential ID system:
+
+  - Auto-save TTS synthesis history with all request parameters
+  - Resume functionality to replay past synthesis results
+  - History management commands: list, show, play, delete, clean, stats
+  - Configurable history settings (enable/disable, max count, storage path)
+  - Sequential ID system (1, 2, 3...) for user-friendly CLI operations
+  - Automatic filename generation with timestamp format
+  - Full parameter preservation including volume, pitch, format, channels, etc.
+
+  This enables users to easily manage and replay their TTS synthesis history.
+
+### Patch Changes
+
+- 3ff1502: feat(cli): add `config keys` command and strict schema validation for `config set/validate`; improve error messages.
+
+  docs(npm): fold advanced sections, clarify API error codes are server-side, and add FFplay PATH refresh notes under a collapsible section.
+
+- 3ff1502: docs: add FFplay installation guide and clarify playback policy;
+  fix: stabilize MCP playback on Windows (stdin streaming when ffplay is available, non‑progressive fallback otherwise); ensure history ID availability with short wait.
+
 ## 0.4.1
 
 ### Patch Changes
