@@ -1,6 +1,6 @@
 {
   "name": "@kajidog/aivis-cloud-cli",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Aivis Cloud CLI - Text-to-speech synthesis and model management",
   "main": "bin/aivis-cloud-cli.js",
   "bin": {
