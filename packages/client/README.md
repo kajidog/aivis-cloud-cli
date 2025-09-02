@@ -6,6 +6,13 @@ Aivis Cloud API の Go クライアントライブラリです。音声合成と
 
 詳細な機能説明・使用方法については [npm パッケージ README](../npm/README.md) を参照してください。
 
+実装上の要点（埋め込み利用時のヒント）
+- グローバル再生サービス（キュー管理）を介して `immediate / queue / no_queue` を統一的に制御
+- `immediate` は既存再生を停止（キューもクリア）して新規再生
+- `queue` は順次再生（`wait_for_end=true` で完了待機）
+- `no_queue` は独立プレイヤーで並列再生（`wait_for_end=true` で同期待機）
+- Windows: ffplay がある場合は stdin ストリーミング。ない場合は生成完了後再生にフォールバック
+
 ## 開発・ビルド
 
 ### 前提条件

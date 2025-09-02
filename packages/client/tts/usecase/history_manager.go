@@ -203,10 +203,13 @@ func (m *TTSHistoryManager) PlayHistory(ctx context.Context, id int, playbackOpt
 		return err
 	}
 
-	// Check if audio file exists
-	if _, err := os.Stat(history.FilePath); os.IsNotExist(err) {
-		return fmt.Errorf("audio file not found: %s", history.FilePath)
-	}
+    // Check if audio file exists
+    if _, err := os.Stat(history.FilePath); err != nil {
+        if os.IsNotExist(err) {
+            return fmt.Errorf("audio file not found: %s", history.FilePath)
+        }
+        return fmt.Errorf("failed to access audio file: %w", err)
+    }
 
 	// Create default playback options if not provided
 	if playbackOptions == nil {

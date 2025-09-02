@@ -1,14 +1,15 @@
 package usecase
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"sync"
-	"time"
+    "context"
+    "fmt"
+    "io"
+    "os"
+    "sync"
+    "time"
 
-	"github.com/kajidog/aivis-cloud-cli/client/common/logger"
-	"github.com/kajidog/aivis-cloud-cli/client/tts/domain"
+    "github.com/kajidog/aivis-cloud-cli/client/common/logger"
+    "github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 )
 
 // AudioPlayerConfig holds configuration for the audio player service
@@ -18,19 +19,22 @@ type AudioPlayerConfig struct {
 
 // GlobalAudioPlayerService manages audio playback with global singleton pattern
 type GlobalAudioPlayerService struct {
-	ttsService *TTSSynthesizer
-	player     domain.AudioPlayer
-	config     *AudioPlayerConfig
-	logger     logger.Logger
+    ttsService *TTSSynthesizer
+    player     domain.AudioPlayer
+    config     *AudioPlayerConfig
+    logger     logger.Logger
 
 	mu         sync.RWMutex
 	queue      []queueItem
 	processing bool
 	
 	// Worker goroutine management
-	workerCtx    context.Context
-	workerCancel context.CancelFunc
-	workerDone   chan struct{}
+    workerCtx    context.Context
+    workerCancel context.CancelFunc
+    workerDone   chan struct{}
+
+    // Factory to create new independent players for no_queue concurrent playback
+    newPlayerFactory func() domain.AudioPlayer
 }
 
 var (
@@ -69,10 +73,17 @@ func (s *GlobalAudioPlayerService) InitializeWithLogger(ttsService *TTSSynthesiz
 	}
 	
 	// Start worker goroutine if not already running
-	if s.workerCtx == nil {
-		s.workerCtx, s.workerCancel = context.WithCancel(context.Background())
-		go s.queueWorker()
-	}
+    if s.workerCtx == nil {
+        s.workerCtx, s.workerCancel = context.WithCancel(context.Background())
+        go s.queueWorker()
+    }
+}
+
+// SetNewPlayerFactory sets a factory function to create independent players for no_queue playback
+func (s *GlobalAudioPlayerService) SetNewPlayerFactory(factory func() domain.AudioPlayer) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    s.newPlayerFactory = factory
 }
 
 // PlayRequest plays audio with the specified playback mode (asynchronous or synchronous)
@@ -81,8 +92,25 @@ func (s *GlobalAudioPlayerService) PlayRequest(ctx context.Context, request *dom
 		return fmt.Errorf("audio player service not initialized")
 	}
 	
+	// Debug logging for queue behavior investigation
+	mode := "nil"
+	if request.Mode != nil {
+		mode = string(*request.Mode)
+	}
+	waitForEnd := false
+	if request.WaitForEnd != nil {
+		waitForEnd = *request.WaitForEnd
+	}
+	s.logger.Info("PlayRequest called", 
+		logger.String("mode", mode),
+		logger.Bool("wait_for_end", waitForEnd),
+		logger.Bool("is_playing", s.player.IsPlaying()),
+		logger.Bool("processing", s.processing),
+		logger.Int("queue_length", len(s.queue)))
+	
 	// Handle wait_for_end flag - if true, use synchronous playback regardless of mode
 	if request.WaitForEnd != nil && *request.WaitForEnd {
+		s.logger.Info("Using synchronous playback (wait_for_end=true)")
 		return s.playSynchronous(ctx, request)
 	}
 	
@@ -103,10 +131,114 @@ func (s *GlobalAudioPlayerService) PlayRequest(ctx context.Context, request *dom
 	}
 }
 
+// PlayRequestWithHistory plays audio respecting mode and wait_for_end while saving to history.
+func (s *GlobalAudioPlayerService) PlayRequestWithHistory(ctx context.Context, request *domain.PlaybackRequest, historyFilePath string) error {
+    if request == nil || request.TTSRequest == nil {
+        return fmt.Errorf("invalid request")
+    }
+
+    // Handle wait_for_end flag - synchronous path
+    if request.WaitForEnd != nil && *request.WaitForEnd {
+        // Determine mode (default: queue for safety to avoid interrupting current playback)
+        mode := domain.PlaybackModeQueue
+        if request.Mode != nil {
+            mode = *request.Mode
+        }
+        switch mode {
+        case domain.PlaybackModeImmediate:
+            // Immediate: stop current playback and clear queue, then play synchronously
+            s.logger.Info("Synchronous immediate mode - stopping current playback (with history)")
+            s.Stop()
+            return s.synthesizeAndPlayStreamSyncWithHistory(ctx, request, getOutputFormat(request), historyFilePath)
+        case domain.PlaybackModeQueue:
+            return s.addToQueueSyncWithHistory(ctx, request, historyFilePath)
+        case domain.PlaybackModeNoQueue:
+            // Use independent player and wait synchronously
+            var tempPlayer domain.AudioPlayer
+            s.mu.RLock(); factory := s.newPlayerFactory; s.mu.RUnlock()
+            if factory != nil { tempPlayer = factory() } else { tempPlayer = s.player }
+            defer tempPlayer.Close()
+            if request.Volume != nil { _ = tempPlayer.SetVolume(*request.Volume) }
+            return s.streamingSynthesisAndPlayWithPlayerAndHistory(ctx, request, getOutputFormat(request), tempPlayer, historyFilePath)
+        default:
+            return s.addToQueueSyncWithHistory(ctx, request, historyFilePath)
+        }
+    }
+
+    // Asynchronous path
+    if request.Mode == nil {
+        // Default to queue for history-safe behavior (do not interrupt current playback)
+        return s.addToQueueWithHistory(ctx, request, historyFilePath)
+    }
+    switch *request.Mode {
+    case domain.PlaybackModeImmediate:
+        // Immediate: stop current playback and clear queue, then play asynchronously
+        s.Stop()
+        go func() { _ = s.streamingSynthesisAndPlayWithHistory(ctx, request, getOutputFormat(request), historyFilePath) }()
+        return nil
+    case domain.PlaybackModeQueue:
+        return s.addToQueueWithHistory(ctx, request, historyFilePath)
+    case domain.PlaybackModeNoQueue:
+        return s.playWithoutQueueWithHistory(ctx, request, historyFilePath)
+    default:
+        return s.addToQueueWithHistory(ctx, request, historyFilePath)
+    }
+}
+
+func (s *GlobalAudioPlayerService) addToQueueWithHistory(ctx context.Context, request *domain.PlaybackRequest, historyFilePath string) error {
+    s.mu.Lock(); defer s.mu.Unlock()
+    if len(s.queue) >= s.config.MaxQueueSize {
+        return fmt.Errorf("queue is full (max size: %d)", s.config.MaxQueueSize)
+    }
+    item := queueItem{ request: request, ctx: ctx, done: nil, historyFilePath: historyFilePath }
+    s.queue = append(s.queue, item)
+    if setter, ok := s.player.(interface{ SetQueueLength(int) }); ok { setter.SetQueueLength(len(s.queue)) }
+    shouldProcess := !s.processing && !s.player.IsPlaying()
+    s.mu.Unlock()
+    if shouldProcess { s.processNextQueueItem() }
+    s.mu.Lock()
+    return nil
+}
+
+func (s *GlobalAudioPlayerService) addToQueueSyncWithHistory(ctx context.Context, request *domain.PlaybackRequest, historyFilePath string) error {
+    s.mu.Lock()
+    if len(s.queue) >= s.config.MaxQueueSize {
+        s.mu.Unlock()
+        return fmt.Errorf("queue is full (max size: %d)", s.config.MaxQueueSize)
+    }
+    done := make(chan error, 1)
+    item := queueItem{ request: request, ctx: ctx, done: done, historyFilePath: historyFilePath }
+    s.queue = append(s.queue, item)
+    if setter, ok := s.player.(interface{ SetQueueLength(int) }); ok { setter.SetQueueLength(len(s.queue)) }
+    shouldProcess := !s.processing && !s.player.IsPlaying()
+    s.mu.Unlock()
+    if shouldProcess { s.processNextQueueItem() }
+    select {
+    case err := <-done: return err
+    case <-ctx.Done(): return ctx.Err()
+    }
+}
+
+func (s *GlobalAudioPlayerService) playWithoutQueueWithHistory(ctx context.Context, request *domain.PlaybackRequest, historyFilePath string) error {
+    go func() {
+        var tempPlayer domain.AudioPlayer
+        s.mu.RLock(); factory := s.newPlayerFactory; s.mu.RUnlock()
+        if factory != nil { tempPlayer = factory() } else { tempPlayer = s.player }
+        defer tempPlayer.Close()
+        if request.Volume != nil { _ = tempPlayer.SetVolume(*request.Volume) }
+        _ = s.streamingSynthesisAndPlayWithPlayerAndHistory(ctx, request, getOutputFormat(request), tempPlayer, historyFilePath)
+    }()
+    return nil
+}
+
 // playImmediate stops current playback and plays new audio immediately
 func (s *GlobalAudioPlayerService) playImmediate(ctx context.Context, request *domain.PlaybackRequest) error {
 	// Stop current playback and clear queue
 	s.Stop()
+	
+	// Add small delay to ensure previous playback process is fully stopped
+	// This prevents audio overlap when multiple immediate requests come quickly
+	time.Sleep(50 * time.Millisecond)
 	
 	// Play immediately in background
 	go func() {
@@ -140,17 +272,55 @@ func (s *GlobalAudioPlayerService) addToQueue(ctx context.Context, request *doma
 		setter.SetQueueLength(len(s.queue))
 	}
 	
+	// Only trigger queue processing if no playback is active
+	// This prevents interference with existing playback
+	shouldProcess := !s.processing && !s.player.IsPlaying()
+	s.mu.Unlock() // Unlock before calling processNextQueueItem to avoid deadlock
+	
+	if shouldProcess {
+		s.processNextQueueItem()
+	}
+	
+	s.mu.Lock() // Re-lock for defer
+	
 	return nil
 }
 
 // playWithoutQueue plays audio without queue management (asynchronous)
 func (s *GlobalAudioPlayerService) playWithoutQueue(ctx context.Context, request *domain.PlaybackRequest) error {
-	// Play in background without affecting current playback or queue
-	go func() {
-		s.synthesizeAndPlayStream(ctx, request, getOutputFormat(request))
-	}()
-	
-	return nil
+    // Play in background using a dedicated, short-lived player instance to allow overlap
+    go func() {
+        // Create a separate player (if factory is available) to avoid killing current playback
+        var tempPlayer domain.AudioPlayer
+        s.mu.RLock()
+        factory := s.newPlayerFactory
+        s.mu.RUnlock()
+        if factory != nil {
+            tempPlayer = factory()
+        } else {
+            // Fallback: use shared player (may interrupt current playback)
+            tempPlayer = s.player
+        }
+        defer tempPlayer.Close()
+
+        // Validate request
+        if err := s.ttsService.ValidateRequest(request.TTSRequest); err != nil {
+            s.logger.Error("Invalid TTS request for no_queue: " + err.Error())
+            return
+        }
+
+        // Apply volume if specified
+        if request.Volume != nil {
+            _ = tempPlayer.SetVolume(*request.Volume)
+        }
+
+        // Run streaming synthesis with provided temp player
+        if err := s.streamingSynthesisAndPlayWithPlayer(ctx, request, getOutputFormat(request), tempPlayer); err != nil {
+            s.logger.Error("no_queue playback error: " + err.Error())
+        }
+    }()
+
+    return nil
 }
 
 // queueWorker processes queue items sequentially in background
@@ -201,11 +371,28 @@ func (s *GlobalAudioPlayerService) processNextQueueItem() {
 			s.mu.Lock()
 			s.processing = false
 			s.mu.Unlock()
+			
+			// CRITICAL: Process next item in queue after completion
+			s.processNextQueueItem()
 		}()
 		
-		err := s.synthesizeAndPlayStream(item.ctx, item.request, getOutputFormat(item.request))
+    var err error
+    if item.historyFilePath != "" {
+        err = s.streamingSynthesisAndPlayWithHistory(item.ctx, item.request, getOutputFormat(item.request), item.historyFilePath)
+    } else {
+        err = s.synthesizeAndPlayStream(item.ctx, item.request, getOutputFormat(item.request))
+    }
 		if err != nil {
 			s.logger.Error("Queue playback error", logger.Error(err))
+		}
+		
+		// Notify completion via done channel if present (synchronous operation)
+		if item.done != nil {
+			select {
+			case item.done <- err:
+			default:
+				// Channel full or closed, ignore
+			}
 		}
 	}()
 }
@@ -235,6 +422,11 @@ func (s *GlobalAudioPlayerService) synthesizeAndPlayStream(ctx context.Context, 
 
 // streamingSynthesisAndPlay performs streaming synthesis and playback
 func (s *GlobalAudioPlayerService) streamingSynthesisAndPlay(ctx context.Context, request *domain.PlaybackRequest, format domain.OutputFormat) error {
+    return s.streamingSynthesisAndPlayWithHistory(ctx, request, format, "")
+}
+
+// streamingSynthesisAndPlayWithHistory performs streaming synthesis and playback with optional history saving
+func (s *GlobalAudioPlayerService) streamingSynthesisAndPlayWithHistory(ctx context.Context, request *domain.PlaybackRequest, format domain.OutputFormat, historyFilePath string) error {
 	// Create a pipe for streaming audio data
 	pipeReader, pipeWriter := io.Pipe()
 	defer pipeReader.Close()
@@ -254,12 +446,32 @@ func (s *GlobalAudioPlayerService) streamingSynthesisAndPlay(ctx context.Context
 		}
 	}()
 	
-	// Create streaming handler that writes to pipe
-	handler := &streamingPlaybackHandler{
-		writer:      pipeWriter,
-		firstChunk:  true,
-		startTime:   time.Now(),
-		logger:      s.logger,
+	// Create streaming handler that writes to pipe and optionally to history file
+	var handler domain.TTSStreamHandler
+	if historyFilePath != "" {
+		// Create history file for concurrent writing
+		historyFile, err := os.Create(historyFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to create history file: %w", err)
+		}
+		defer historyFile.Close()
+		
+		// Use tee handler for both playback and history
+		handler = &streamingPlaybackHistoryHandler{
+			writer:       pipeWriter,
+			historyFile:  historyFile,
+			firstChunk:   true,
+			startTime:    time.Now(),
+			logger:       s.logger,
+		}
+	} else {
+		// Use regular playback handler
+		handler = &streamingPlaybackHandler{
+			writer:      pipeWriter,
+			firstChunk:  true,
+			startTime:   time.Now(),
+			logger:      s.logger,
+		}
 	}
 	
 	// Start streaming synthesis with independent context
@@ -292,6 +504,90 @@ func (s *GlobalAudioPlayerService) streamingSynthesisAndPlay(ctx context.Context
 		return synthErr
 	}
 	return playErr
+}
+
+// streamingSynthesisAndPlayWithPlayer performs streaming synthesis and plays using the provided player
+func (s *GlobalAudioPlayerService) streamingSynthesisAndPlayWithPlayer(ctx context.Context, request *domain.PlaybackRequest, format domain.OutputFormat, player domain.AudioPlayer) error {
+    // Create a pipe for streaming audio data
+    pipeReader, pipeWriter := io.Pipe()
+    defer pipeReader.Close()
+
+    errChan := make(chan error, 2)
+
+    // Start playback on the provided player
+    go func() {
+        playbackCtx := context.Background()
+        err := player.Play(playbackCtx, pipeReader, format)
+        if err != nil { errChan <- fmt.Errorf("playback failed: %w", err) } else { errChan <- nil }
+    }()
+
+    // Use simple playback handler (no history)
+    handler := &streamingPlaybackHandler{
+        writer:     pipeWriter,
+        firstChunk: true,
+        startTime:  time.Now(),
+        logger:     s.logger,
+    }
+
+    // Start synthesis
+    go func() {
+        synthesisCtx := context.Background()
+        err := s.ttsService.SynthesizeStream(synthesisCtx, request.TTSRequest, handler)
+        pipeWriter.Close()
+        if err != nil { errChan <- fmt.Errorf("synthesis failed: %w", err) } else { errChan <- nil }
+    }()
+
+    // Wait for both
+    var synthErr, playErr error
+    for i := 0; i < 2; i++ {
+        if err := <-errChan; err != nil {
+            if synthErr == nil { synthErr = err } else { playErr = err }
+        }
+    }
+    if synthErr != nil { return synthErr }
+    return playErr
+}
+
+// streamingPlaybackHistoryHandler handles streaming data for both playback and history
+type streamingPlaybackHistoryHandler struct {
+	writer      io.WriteCloser
+	historyFile *os.File
+	firstChunk  bool
+	startTime   time.Time
+	logger      logger.Logger
+}
+
+func (h *streamingPlaybackHistoryHandler) OnChunk(chunk *domain.TTSStreamChunk) error {
+	if h.firstChunk {
+		h.firstChunk = false
+		h.logger.Debug("First audio chunk received, starting progressive playback")
+	}
+	
+	// Write to playback pipe
+	if _, err := h.writer.Write(chunk.Data); err != nil {
+		return fmt.Errorf("failed to write to playback stream: %w", err)
+	}
+	
+	// Write to history file concurrently
+	if h.historyFile != nil {
+		if _, err := h.historyFile.Write(chunk.Data); err != nil {
+			// Don't fail streaming for history write errors
+			h.logger.Warn("Failed to write chunk to history file: " + err.Error())
+		}
+	}
+	
+	return nil
+}
+
+func (h *streamingPlaybackHistoryHandler) OnComplete() error {
+	h.logger.Debug("Streaming synthesis completed", 
+		logger.String("duration", time.Since(h.startTime).String()),
+	)
+	return nil
+}
+
+func (h *streamingPlaybackHistoryHandler) OnError(err error) {
+	h.logger.Error("Streaming synthesis error: " + err.Error())
 }
 
 // Stop stops current playback and clears queue
@@ -369,10 +665,12 @@ func (s *GlobalAudioPlayerService) playSynchronous(ctx context.Context, request 
 	switch mode {
 	case domain.PlaybackModeImmediate:
 		// For immediate mode with wait_for_end, stop current and play synchronously
+		s.logger.Info("Synchronous immediate mode - stopping current playback")
 		s.Stop()
 		return s.synthesizeAndPlayStreamSync(ctx, request, getOutputFormat(request))
 	case domain.PlaybackModeQueue:
 		// For queue mode with wait_for_end, add to queue and wait for completion
+		s.logger.Info("Synchronous queue mode - adding to queue and waiting")
 		return s.addToQueueSync(ctx, request)
 	case domain.PlaybackModeNoQueue:
 		// For no_queue mode with wait_for_end, play without affecting queue but wait
@@ -384,35 +682,58 @@ func (s *GlobalAudioPlayerService) playSynchronous(ctx context.Context, request 
 
 // addToQueueSync adds request to queue and waits for completion
 func (s *GlobalAudioPlayerService) addToQueueSync(ctx context.Context, request *domain.PlaybackRequest) error {
-	// Add to queue normally
-	if err := s.addToQueue(ctx, request); err != nil {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Check queue size limit
+	if len(s.queue) >= s.config.MaxQueueSize {
+		return fmt.Errorf("queue is full (max size: %d)", s.config.MaxQueueSize)
+	}
+	
+	// Create done channel for synchronous operation
+	done := make(chan error, 1)
+	
+	// Add to queue with done channel for synchronous operation
+	item := queueItem{
+		request: request,
+		ctx:     ctx,
+		done:    done, // Synchronous - will wait for completion
+	}
+	
+	s.queue = append(s.queue, item)
+	
+	// Update queue length if player supports it
+	if setter, ok := s.player.(interface{ SetQueueLength(int) }); ok {
+		setter.SetQueueLength(len(s.queue))
+	}
+	
+	// Only trigger queue processing if no playback is active
+	// This prevents interference with existing playback
+	shouldProcess := !s.processing && !s.player.IsPlaying()
+	s.mu.Unlock() // Unlock for waiting
+	
+	if shouldProcess {
+		s.processNextQueueItem()
+	}
+	
+	// Wait for completion via done channel
+	select {
+	case err := <-done:
 		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	
-	// Wait for playback completion by monitoring status
-	for {
-		status := s.GetStatus()
-		if status.Status == domain.PlaybackStatusIdle || 
-		   status.Status == domain.PlaybackStatusStopped {
-			break
-		}
-		
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-			continue
-		}
-	}
-	
-	return nil
 }
 
 // synthesizeAndPlayStreamSync performs synchronous streaming synthesis and playback
 func (s *GlobalAudioPlayerService) synthesizeAndPlayStreamSync(ctx context.Context, request *domain.PlaybackRequest, format domain.OutputFormat) error {
-	// Use the existing streaming synthesis but wait for completion
-	return s.synthesizeAndPlayStream(ctx, request, format)
-	// Note: The existing method already waits for both synthesis and playback completion
+    // Use the existing streaming synthesis but wait for completion
+    return s.synthesizeAndPlayStream(ctx, request, format)
+    // Note: The existing method already waits for both synthesis and playback completion
+}
+
+func (s *GlobalAudioPlayerService) synthesizeAndPlayStreamSyncWithHistory(ctx context.Context, request *domain.PlaybackRequest, format domain.OutputFormat, historyFilePath string) error {
+    return s.streamingSynthesisAndPlayWithHistory(ctx, request, format, historyFilePath)
 }
 
 // Helper functions
@@ -423,4 +744,45 @@ func getOutputFormat(request *domain.PlaybackRequest) domain.OutputFormat {
 		format = *request.TTSRequest.OutputFormat
 	}
 	return format
+}
+
+// streamingSynthesisAndPlayWithPlayerAndHistory performs streaming synthesis with concurrent playback via provided player and writes to history file
+func (s *GlobalAudioPlayerService) streamingSynthesisAndPlayWithPlayerAndHistory(ctx context.Context, request *domain.PlaybackRequest, format domain.OutputFormat, player domain.AudioPlayer, historyFilePath string) error {
+    pipeReader, pipeWriter := io.Pipe(); defer pipeReader.Close()
+    errChan := make(chan error, 2)
+
+    go func() {
+        playbackCtx := context.Background()
+        err := player.Play(playbackCtx, pipeReader, format)
+        if err != nil { errChan <- fmt.Errorf("playback failed: %w", err) } else { errChan <- nil }
+    }()
+
+    // Open history file
+    historyFile, err := os.Create(historyFilePath)
+    if err != nil { return fmt.Errorf("failed to create history file: %w", err) }
+    defer historyFile.Close()
+
+    handler := &streamingPlaybackHistoryHandler{
+        writer:      pipeWriter,
+        historyFile: historyFile,
+        firstChunk:  true,
+        startTime:   time.Now(),
+        logger:      s.logger,
+    }
+
+    go func() {
+        synthesisCtx := context.Background()
+        err := s.ttsService.SynthesizeStream(synthesisCtx, request.TTSRequest, handler)
+        pipeWriter.Close()
+        if err != nil { errChan <- fmt.Errorf("synthesis failed: %w", err) } else { errChan <- nil }
+    }()
+
+    var synthErr, playErr error
+    for i := 0; i < 2; i++ {
+        if err := <-errChan; err != nil {
+            if synthErr == nil { synthErr = err } else { playErr = err }
+        }
+    }
+    if synthErr != nil { return synthErr }
+    return playErr
 }

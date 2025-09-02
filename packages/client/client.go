@@ -1,12 +1,13 @@
 package client
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"os"
-	"strconv"
-	"time"
+    "context"
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "strconv"
+    "time"
 
 	"github.com/kajidog/aivis-cloud-cli/client/common/http"
 	"github.com/kajidog/aivis-cloud-cli/client/common/logger"
@@ -121,7 +122,12 @@ func NewWithConfig(cfg *config.Config) (*Client, error) {
 		MaxQueueSize: 100, // Default queue size
 	}
 	
-	globalPlayerService.InitializeWithLogger(ttsService, audioPlayer, playerConfig, clientLogger)
+    globalPlayerService.InitializeWithLogger(ttsService, audioPlayer, playerConfig, clientLogger)
+    // Provide factory for creating independent players (for no_queue concurrent playback)
+    globalPlayerService.SetNewPlayerFactory(func() ttsDomain.AudioPlayer {
+        // Use same playback config and logger
+        return ttsInfra.NewOSCommandAudioPlayerWithLogger(playbackConfig, clientLogger)
+    })
 	
 	// Create adapter to maintain compatibility with existing interface
 	playerService := ttsUsecase.NewAudioPlayerServiceAdapter(globalPlayerService)
@@ -435,15 +441,46 @@ func (c *Client) PlayTextWithOptions(ctx context.Context, text, modelUUID string
 
 // PlayStreamWithHistory performs streaming TTS synthesis with audio playback and history saving
 func (c *Client) PlayStreamWithHistory(ctx context.Context, request *ttsDomain.PlaybackRequest, filePath string) (*ttsDomain.TTSResponse, error) {
-	// Create a playback handler that integrates with the audio player service
-	playbackHandler := &playbackStreamHandler{
-		playerService: c.playerService,
-		playbackReq:   request,
-		ctx:          ctx,
+	c.logger.Info("Using single-pass streaming synthesis with concurrent playback and history saving")
+	
+	// Use the adapter's streaming method with history (single synthesis only)
+	// This performs only ONE synthesis with concurrent playback and file saving
+    err := c.playerService.PlayRequestWithHistory(ctx, request, filePath)
+    if err != nil {
+        return nil, fmt.Errorf("streaming synthesis and playback failed: %w", err)
+    }
+
+    // Best-effort: wait briefly until the history file is created by the streaming goroutine
+    // to avoid race where SaveHistory fails with file-not-found
+    waitDeadline := time.Now().Add(3 * time.Second)
+    for time.Now().Before(waitDeadline) {
+        if _, statErr := os.Stat(filePath); statErr == nil {
+            break
+        }
+        select {
+        case <-ctx.Done():
+            // Context cancelled; proceed without blocking further
+            break
+        case <-time.After(50 * time.Millisecond):
+        }
+    }
+
+    // Save to history database (file should exist from streaming path)
+    historyResponse, historyErr := c.historyManager.SaveHistory(ctx, request.TTSRequest, filePath, nil)
+	var historyID int = 0
+	if historyErr == nil && historyResponse != nil {
+		historyID = historyResponse.ID
+	} else {
+		c.logger.Warn("Failed to save TTS history metadata", 
+			logger.String("error", historyErr.Error()))
 	}
 	
-	// Perform streaming synthesis with history and concurrent playback
-	return c.SynthesizeStreamWithHistory(ctx, request.TTSRequest, filePath, playbackHandler)
+	response := &ttsDomain.TTSResponse{
+		HistoryID: historyID,
+	}
+	
+	c.logger.Info("Single-pass streaming synthesis with concurrent operations completed successfully")
+	return response, nil
 }
 
 // playbackStreamHandler handles streaming audio for immediate playback
@@ -452,21 +489,80 @@ type playbackStreamHandler struct {
 	playbackReq   *ttsDomain.PlaybackRequest
 	ctx          context.Context
 	started      bool
+	pipeWriter   *io.PipeWriter
 }
 
 func (h *playbackStreamHandler) OnChunk(chunk *ttsDomain.TTSStreamChunk) error {
-	// Start playback on first chunk if not already started
-	if !h.started {
+	// Start progressive playback on first chunk for MP3 format
+	if !h.started && h.playbackReq.TTSRequest != nil {
 		h.started = true
-		// Note: The actual streaming playback integration would require
-		// modification of the PlayerService to accept streaming chunks
-		// For now, we rely on the existing PlayRequest after synthesis completes
+		
+		// Check if output format is MP3 (supports streaming)
+		format := ttsDomain.OutputFormatWAV // default
+		if h.playbackReq.TTSRequest.OutputFormat != nil {
+			format = *h.playbackReq.TTSRequest.OutputFormat
+		}
+		
+		// Only enable progressive playback for MP3 format
+		if format == ttsDomain.OutputFormatMP3 {
+			// Create pipe for streaming audio to player
+			pipeReader, pipeWriter := io.Pipe()
+			h.pipeWriter = pipeWriter
+			
+			// Start playback in goroutine with pipe reader
+			go func() {
+				defer pipeReader.Close()
+				// Create a temporary file that we'll write to progressively
+				tempFile, err := os.CreateTemp("", "progressive_*.mp3")
+				if err != nil {
+					return
+				}
+				defer os.Remove(tempFile.Name())
+				defer tempFile.Close()
+				
+				// Start copying from pipe to temp file and player simultaneously
+				// This allows OS command to start playing as soon as MP3 frames are available
+				go func() {
+					_, err := io.Copy(tempFile, pipeReader)
+					if err != nil {
+						return
+					}
+				}()
+				
+				// Give a small delay for first MP3 frames to be written
+				time.Sleep(100 * time.Millisecond)
+				
+				// For progressive MP3 playback, use direct file playback
+				// Note: This bypasses queue system - should be improved in future
+				if err := h.playerService.PlayAudioFile(h.ctx, tempFile.Name(), format); err != nil {
+					// Log error but don't fail the streaming
+				}
+			}()
+		}
 	}
+	
+	// Write chunk data to pipe if progressive playback is active
+	if h.pipeWriter != nil {
+		if _, err := h.pipeWriter.Write(chunk.Data); err != nil {
+			// Pipe closed or error - switch to completion-based playback
+			h.pipeWriter.Close()
+			h.pipeWriter = nil
+		}
+	}
+	
 	return nil
 }
 
 func (h *playbackStreamHandler) OnComplete() error {
-	// Trigger playback after synthesis completes
+	// Close pipe writer if progressive playback was active
+	if h.pipeWriter != nil {
+		h.pipeWriter.Close()
+		h.pipeWriter = nil
+		// Progressive playback was handled, don't trigger completion-based playback
+		return nil
+	}
+	
+	// Trigger playback after synthesis completes (for non-MP3 formats)
 	// This will use the file that was written during streaming
 	return h.playerService.PlayRequest(h.ctx, h.playbackReq)
 }
@@ -475,8 +571,74 @@ func (h *playbackStreamHandler) OnError(err error) {
 	// Error handling is managed by the caller
 }
 
+// historyOnlyStreamHandler handles streaming synthesis for history saving only
+type historyOnlyStreamHandler struct {
+	filePath string
+	file     *os.File
+	logger   logger.Logger
+}
+
+func (h *historyOnlyStreamHandler) OnChunk(chunk *ttsDomain.TTSStreamChunk) error {
+	// This handler doesn't need to do anything - file writing is handled by SynthesizeStreamWithHistory
+	return nil
+}
+
+func (h *historyOnlyStreamHandler) OnComplete() error {
+	return nil
+}
+
+func (h *historyOnlyStreamHandler) OnError(err error) {
+	h.logger.Error("History synthesis error: " + err.Error())
+}
+
 func (c *Client) PlayRequest(ctx context.Context, request *ttsDomain.PlaybackRequest) error {
-	return c.playerService.PlayRequest(ctx, request)
+    return c.playerService.PlayRequest(ctx, request)
+}
+
+// PlayRequestWithHistory plays audio with concurrent history saving.
+// It auto-generates a history file path under the configured history store.
+func (c *Client) PlayRequestWithHistory(ctx context.Context, request *ttsDomain.PlaybackRequest) (*ttsDomain.TTSResponse, error) {
+    if c.historyManager == nil || !c.config.HistoryEnabled {
+        return nil, fmt.Errorf("history is disabled or not configured")
+    }
+
+    // Determine history store directory
+    storePath, err := c.config.GetHistoryStorePath()
+    if err != nil {
+        return nil, fmt.Errorf("failed to get history store path: %w", err)
+    }
+    audioDir := filepath.Join(storePath, "audio")
+    if err := os.MkdirAll(audioDir, 0755); err != nil {
+        return nil, fmt.Errorf("failed to create audio directory: %w", err)
+    }
+
+    // Determine extension from request format
+    ext := ".wav"
+    if request != nil && request.TTSRequest != nil && request.TTSRequest.OutputFormat != nil {
+        switch *request.TTSRequest.OutputFormat {
+        case ttsDomain.OutputFormatWAV:
+            ext = ".wav"
+        case ttsDomain.OutputFormatMP3:
+            ext = ".mp3"
+        case ttsDomain.OutputFormatFLAC:
+            ext = ".flac"
+        case ttsDomain.OutputFormatAAC:
+            ext = ".aac"
+        case ttsDomain.OutputFormatOpus:
+            ext = ".opus"
+        }
+    }
+
+    // Generate filename
+    timestamp := time.Now().Format("20060102_150405")
+    filePath := filepath.Join(audioDir, fmt.Sprintf("tts_%s%s", timestamp, ext))
+
+    // Use single-pass streaming synthesis with concurrent playback and file writing
+    resp, err := c.PlayStreamWithHistory(ctx, request, filePath)
+    if err != nil {
+        return nil, err
+    }
+    return resp, nil
 }
 
 // StopPlayback stops current playback and clears queue

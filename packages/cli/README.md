@@ -8,6 +8,12 @@ Aivis Cloud API を使用して音声合成と音声再生を行うコマンド�
 
 機能・使用方法については [npm パッケージ README](../npm/README.md) を参照してください。
 
+補足（CLI 実行時の挙動の要点）
+- `tts play` は既定で履歴保存（Resume対応）。無効化は `--save-history=false`
+- 再生モード: `immediate` は既存再生を停止、`queue` は順次、`no_queue` は並列
+- Windows で ffplay がある場合はストリーミング再生。ない場合は生成完了後に再生（途中停止回避）
+- MCP stdio 実行時は子プロセス stdout を抑止してプロトコル汚染を防止
+
 ### 前提条件
 
 - Go 1.21 以上

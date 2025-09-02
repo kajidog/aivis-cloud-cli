@@ -17,7 +17,16 @@ Aivis Cloud API を使用した音声合成・音声再生のコマンドライ�
 
 ## 使い方
 
-**詳細な機能説明・使用例・MCP設定などは [npm パッケージのREADME](./packages/npm/README.md) をご確認ください。**
+詳細な機能説明・使用例・MCP設定は必ず次を参照してください：
+- [packages/npm/README.md](./packages/npm/README.md)（メインのユーザーガイド）
+
+補足（再生ポリシーの要点）:
+- 再生モード: `immediate`（既存再生を停止）、`queue`（順次再生）、`no_queue`（並列再生）
+- 履歴: CLI の `tts play` は既定で履歴保存（Resume対応）。無効化は `--save-history=false`
+- Windowsの再生安定性: ffplay がある場合は標準入力ストリーミング再生、ない場合は生成完了後に再生（途中停止を回避）
+- 低遅延を重視する場合はフォーマットに `mp3` を推奨
+
+FFplay の導入については、packages/npm/README.md の「FFplay の導入」セクションを参照してください。
 
 ### インストール・セットアップ
 

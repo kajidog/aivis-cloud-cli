@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"time"
 
@@ -24,9 +25,11 @@ type AudioPlayerService struct {
 
 // queueItem represents an item in the playback queue
 type queueItem struct {
-	request *domain.PlaybackRequest
-	ctx     context.Context
-	done    chan error
+    request *domain.PlaybackRequest
+    ctx     context.Context
+    done    chan error
+    // optional: when non-empty, save streaming audio concurrently to this path
+    historyFilePath string
 }
 
 // NewAudioPlayerService creates a new audio player service
@@ -50,6 +53,19 @@ func NewAudioPlayerServiceWithLogger(ttsService *TTSSynthesizer, player domain.A
 		queue:      make([]queueItem, 0),
 		logger:     log,
 	}
+}
+
+// PlayAudioFile plays an audio file directly (for progressive playback)
+func (s *AudioPlayerService) PlayAudioFile(ctx context.Context, filePath string, format domain.OutputFormat) error {
+	// Create a file reader
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open audio file: %w", err)
+	}
+	defer file.Close()
+	
+	// Use the underlying player to play the file
+	return s.player.Play(ctx, file, format)
 }
 
 // PlayText plays the given text using TTS synthesis and audio playback

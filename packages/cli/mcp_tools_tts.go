@@ -160,12 +160,12 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	// Create playback request with options
 	playbackReq := aivisClient.NewPlaybackRequest(request.Build())
 	
-	// Set playback mode (default to immediate for MCP)
+	// Set playback mode (default to queue for MCP - best for AI conversations)
 	playbackMode := args.PlaybackMode
 	if playbackMode == "" {
 		playbackMode = viper.GetString("default_playback_mode")
 		if playbackMode == "" {
-			playbackMode = "immediate" // MCP default
+			playbackMode = "queue" // MCP default - ensures all audio plays in order
 		}
 	}
 	switch playbackMode {
@@ -340,12 +340,12 @@ func handlePlayText(ctx context.Context, req *mcp.CallToolRequest, args PlayText
 	// Create playback request with options
 	playbackReq := aivisClient.NewPlaybackRequest(request.Build())
 	
-	// Set playback mode (default to immediate for MCP)
+	// Set playback mode (default to queue for MCP - best for AI conversations)
 	playbackMode := args.PlaybackMode
 	if playbackMode == "" {
 		playbackMode = viper.GetString("default_playback_mode")
 		if playbackMode == "" {
-			playbackMode = "immediate" // MCP default
+			playbackMode = "queue" // MCP default - ensures all audio plays in order
 		}
 	}
 	switch playbackMode {

@@ -83,8 +83,11 @@ npx @kajidog/aivis-cloud-cli tts synthesize --text "感情豊かに話します"
 <summary>音声の即時再生</summary>
 
 ```bash
-# テキストを音声に変換してすぐに再生（デフォルトモデルを使用）
+# テキストを音声に変換してすぐに再生（デフォルトモデルを使用、履歴は既定で保存）
 npx @kajidog/aivis-cloud-cli tts play --text "こんにちは世界"
+
+# 履歴保存を無効化したい場合
+npx @kajidog/aivis-cloud-cli tts play --text "こんにちは世界" --save-history=false
 
 # 特定のモデルを指定して再生
 npx @kajidog/aivis-cloud-cli tts play --text "こんにちは世界" --model-uuid "model-id"
@@ -115,7 +118,7 @@ npx @kajidog/aivis-cloud-cli tts synthesize \
 </details>
 
 <details>
-<summary>ストリーミング合成</summary>
+<summary>ストリーミング合成（標準出力）</summary>
 
 ```bash
 # ストリーミング合成（リアルタイム出力、標準出力に音声データを出力）
@@ -379,11 +382,11 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
 **音声合成・再生関連:**
 
 - **synthesize_speech**: テキストを音声に変換してサーバー上で再生（フル機能版）
-  - **ストリーミング音声合成**: 音声生成と同時に再生開始
-  - **プログレッシブ再生**: 最初の音声チャンクが到着次第、即座に再生開始
+  - **ストリーミング音声合成**: 音声生成をリアルタイムで実行、履歴ファイルに並行保存
+  - **プログレッシブ再生**: MP3形式では音声生成と同時に再生開始、その他形式は合成完了後再生
   - パラメータ: `text` (必須), `model_uuid`, `format`, `volume`, `rate`, `pitch`, `playback_mode`, `wait_for_end`
   - 音声フォーマット: `wav`, `mp3`, `flac`, `aac`, `opus`
-  - 再生モード: `immediate` (即座再生, デフォルト), `queue` (キュー追加), `no_queue` (同時再生)
+  - 再生モード: `immediate` (即座再生), `queue` (キュー追加, **デフォルト**), `no_queue` (同時再生)
 
 - **play_text**: デフォルト設定でテキストを音声再生（簡易版）
   - パラメータ: `text` (必須), `playback_mode`, `wait_for_end`
@@ -423,6 +426,32 @@ MCP サーバーは以下のツールを AI アシスタントに提供します
   - **高度なTTSパラメータ**: `default_ssml`, `default_emotional_intensity`, `default_tempo_dynamics`, `default_leading_silence`, `default_trailing_silence`, `default_channels`
   - **制限**: APIキー、ログ設定、`use_simplified_tts_tools` は変更不可
   - **設定値のバリデーション機能付き**（例：音量は0.0-2.0の範囲、無音時間は0.0-10.0秒の範囲）
+
+### 🎯 **推奨設定**
+
+**AIアシスタント用途**: 全ての音声を順序通り再生
+```javascript
+{
+  "playback_mode": "queue",        // デフォルト - 全音声が順番に再生
+  "wait_for_end": false           // MCPがブロックされずスムーズ
+}
+```
+
+**リアルタイム会話**: 最新の音声を優先
+```javascript
+{
+  "playback_mode": "immediate",    // 前の音声を停止して即座再生
+  "wait_for_end": false
+}
+```
+
+**並行効果音**: 複数音声の同時再生
+```javascript
+{
+  "playback_mode": "no_queue",     // キュー無視で同時再生
+  "wait_for_end": false
+}
+```
 
 **使用例:**
 ```javascript
@@ -473,6 +502,73 @@ update_mcp_settings({
 
 </details>
 
+## 再生モードと動作の詳細
+
+- **immediate**: 現在の再生を停止し、即座に新規音声を再生（キューもクリア）
+- **queue**: 現在の再生を維持し、キューに追加して順次再生（`wait_for_end=true` で完了待機）
+- **no_queue**: キューを使わず独立プレイヤーで並列再生（`wait_for_end=true` で同期待機）
+
+補足:
+- MCP/stdio 実行時は子プロセスの標準出力を抑止し、標準エラーにログを出力します（プロトコル保護）
+- `AIVIS_KEEP_PLAYBACK_FILES=1` で再生用の一時ファイルを削除せず残せます（デバッグ用途）
+
+## ストリーミング再生とプログレッシブ再生のポリシー
+
+- ffplay が利用可能な環境では、標準入力（stdin）ストリーミング再生を優先します
+  - 例: `ffplay -loglevel error -nodisp -autoexit -volume <0-100> -i -`
+  - 履歴保存が必要な場合は tee で並行保存（単一合成で再生と保存を同時実行）
+- ffplay がない Windows では、成長中ファイルの先行再生（プログレッシブ）は無効化し、生成完了後に再生します（途中停止回避のため）
+- 低遅延での即時出音を重視する場合は、フォーマットに `mp3` または `opus` を推奨します
+
+## 履歴保存の挙動
+
+- `tts synthesize` は常に履歴を保存します（IDが付与されます）
+- `tts play` は既定で履歴保存します（`--save-history=false` で無効化可能）
+- MCP の `synthesize_speech` も「再生と同時保存」を単一合成で行い、原則 `wait_for_end=false` でも ID が返ります（内部で短時間ファイル生成を待機）
+
+## FFplay の導入（任意・推奨）
+
+ffplay は FFmpeg に同梱される小型プレイヤーで、標準入力からの再生に対応します。導入済みの環境では、低遅延で安定したストリーミング再生を自動的に使用します。
+
+- 推奨: Windows では導入を推奨（未導入時は生成完了後の再生にフォールバック）
+- 必須事項: `ffplay` に PATH が通っている必要があります。導入後はターミナル（やアプリ）を再起動して PATH を反映してください。
+
+<details>
+<summary>FFplay の導入手順と PATH 反映</summary>
+
+インストール例:
+
+- Windows（いずれか）
+  - Winget: `winget install --id=Gyan.FFmpeg -e`
+  - Chocolatey: `choco install ffmpeg`
+  - Scoop: `scoop install ffmpeg`
+  - 公式ビルド（例）: https://www.gyan.dev/ffmpeg/builds/ または https://github.com/BtbN/FFmpeg-Builds から zip を取得し、`bin` フォルダを PATH に追加
+
+- macOS
+  - Homebrew: `brew install ffmpeg`
+
+- Linux
+  - Debian/Ubuntu: `sudo apt-get update && sudo apt-get install -y ffmpeg`
+  - Fedora: `sudo dnf install -y ffmpeg`
+  - Arch: `sudo pacman -S ffmpeg`
+
+PATH の反映:
+
+- Windows: 環境変数に `...\ffmpeg\bin` を追加後、PowerShell/端末・エディタ（Claude/VS Code 等）を再起動。
+  - 反映確認: `powershell -c "$env:Path"` に ffmpeg のパスが含まれること
+- macOS/Linux: 通常は自動反映。必要に応じて `echo $PATH` で確認し、シェルを再起動。
+- MCP クライアント（Claude Desktop/Code）: アプリ側のプロセス再起動で PATH を再読込します。
+
+動作確認:
+
+```bash
+ffplay -version
+```
+
+バージョン情報が表示されれば導入完了です。CLI/MCP は自動的に ffplay を検出して標準入力ストリーミング再生を使用します。
+
+</details>
+
 ## 対応プラットフォーム
 
 以下のプラットフォーム用のバイナリが含まれています：
@@ -491,7 +587,7 @@ update_mcp_settings({
 - カスタム: `--config` フラグで指定
 
 <details>
-<summary>利用可能なパラメータ一覧</summary>
+<summary>利用可能なパラメータ一覧（クリックで展開）</summary>
 
 | パラメータ                 | 型      | デフォルト値                    | 説明                                       |
 | -------------------------- | ------- | ------------------------------- | ------------------------------------------ |
@@ -557,9 +653,7 @@ npx @kajidog/aivis-cloud-cli mcp --transport http
 
 これにより、Claude Desktop や他の MCP クライアントとの通信が正常に行われます。
 
-</details>
-
-設定例：
+#### 設定例
 
 ```yaml
 api_key: "your-api-key"
@@ -589,19 +683,29 @@ log_format: "text"
 
 ## 環境変数
 
-`AIVIS_` プレフィックスで設定可能：
+<details>
+<summary>`AIVIS_` プレフィックスの環境変数一覧（クリックで展開）</summary>
 
 - `AIVIS_API_KEY`: API キー
 - `AIVIS_BASE_URL`: ベース URL
 - `AIVIS_TIMEOUT`: HTTP タイムアウト
 
-## エラーコードと対処法
+</details>
 
-- **401 Unauthorized**: API キーを確認してください
-- **402 Payment Required**: クレジット不足です
-- **404 Not Found**: モデル UUID が無効です
-- **422 Unprocessable Entity**: パラメータが無効です
-- **429 Too Many Requests**: レート制限に達しました
+## APIエラーコード（参考）
+
+<details>
+<summary>主なAPIエラー（クリックで展開）</summary>
+
+以下は Aivis Cloud API 側から返る一般的なエラーです。CLI/MCP はこれらを適切に伝播します。
+
+- 401 Unauthorized: API キーを確認してください
+- 402 Payment Required: クレジット不足です
+- 404 Not Found: モデル UUID が無効です
+- 422 Unprocessable Entity: パラメータが無効です
+- 429 Too Many Requests: レート制限に達しました
+
+</details>
 
 ## ライセンス
 

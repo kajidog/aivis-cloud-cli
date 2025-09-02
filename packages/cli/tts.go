@@ -51,7 +51,7 @@ var ttsPlayCmd = &cobra.Command{
 	Short: "Synthesize text and play audio",
 	Long:  "Convert text to speech using specified model and play the audio",
 	Args:  cobra.RangeArgs(0, 2),
-	RunE: func(cmd *cobra.Command, args []string) error {
+    RunE: func(cmd *cobra.Command, args []string) error {
 		text := ""
 		modelUUID := defaultModelUUID
 		
@@ -84,8 +84,8 @@ var ttsPlayCmd = &cobra.Command{
 		leadingSilence, _ := cmd.Flags().GetFloat64("leading-silence")
 		trailingSilence, _ := cmd.Flags().GetFloat64("trailing-silence")
 
-		// Build TTS request
-		request := aivisClient.NewTTSRequest(modelUUID, text)
+        // Build TTS request
+        request := aivisClient.NewTTSRequest(modelUUID, text)
 		
 		if volume > 0 {
 			request = request.WithVolume(volume)
@@ -117,15 +117,23 @@ var ttsPlayCmd = &cobra.Command{
 		ttsReq := request.Build()
 
 		// Build playback request with WaitForEnd flag for synchronous playback
+		// Use no_queue mode for CLI - no need to stop previous playback (fresh process)
 		playbackBuilder := aivisClient.NewPlaybackRequest(ttsReq).
-			WithMode(ttsDomain.PlaybackModeImmediate).
+			WithMode(ttsDomain.PlaybackModeNoQueue).
 			WithWaitForEnd(true)
-		playbackReq := playbackBuilder.Build()
+        playbackReq := playbackBuilder.Build()
 
-		ctx := context.Background()
-		if err := aivisClient.PlayRequest(ctx, playbackReq); err != nil {
-			return fmt.Errorf("failed to play text: %v", err)
-		}
+        ctx := context.Background()
+        saveHistory, _ := cmd.Flags().GetBool("save-history")
+        if saveHistory {
+            if _, err := aivisClient.PlayRequestWithHistory(ctx, playbackReq); err != nil {
+                return fmt.Errorf("failed to play with history: %v", err)
+            }
+        } else {
+            if err := aivisClient.PlayRequest(ctx, playbackReq); err != nil {
+                return fmt.Errorf("failed to play text: %v", err)
+            }
+        }
 
 		if verbose {
 			fmt.Fprintf(os.Stderr, "Successfully played text: %s\n", text)
@@ -429,8 +437,11 @@ func init() {
 	ttsStreamCmd.Flags().String("text", "", "Text to synthesize")
 	ttsStreamCmd.Flags().String("model-uuid", "", "Voice model UUID (uses default if not specified)")
 
-	// Add subcommands to tts command
-	ttsCmd.AddCommand(ttsPlayCmd)
+    // tts play options
+    ttsPlayCmd.Flags().Bool("save-history", true, "save playback to history while playing (use --save-history=false to disable)")
+
+    // Add subcommands to tts command
+    ttsCmd.AddCommand(ttsPlayCmd)
 	ttsCmd.AddCommand(ttsSynthesizeCmd)
 	ttsCmd.AddCommand(ttsStreamCmd)
 	ttsCmd.AddCommand(ttsControlCmd)
