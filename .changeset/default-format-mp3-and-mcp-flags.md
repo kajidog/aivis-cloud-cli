@@ -1,5 +1,5 @@
 ---
-"@kajidog/aivis-cloud-cli": minor
+"@kajidog/aivis-cloud-cli": patch
 ---
 
 feat: change default audio format to mp3 and expose authoritative playback characteristics in MCP responses.

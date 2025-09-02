@@ -452,11 +452,11 @@ func (c *Client) PlayStreamWithHistory(ctx context.Context, request *ttsDomain.P
         return nil, fmt.Errorf("streaming synthesis and playback failed: %w", err)
     }
 
-    // Best-effort: wait briefly until the history file is created by the streaming goroutine
-    // to avoid race where SaveHistory fails with file-not-found
+    // Best-effort: wait briefly until the history file is created and has non-zero size
+    // to avoid race where SaveHistory sees a zero-byte file
     waitDeadline := time.Now().Add(3 * time.Second)
     for time.Now().Before(waitDeadline) {
-        if _, statErr := os.Stat(filePath); statErr == nil {
+        if fi, statErr := os.Stat(filePath); statErr == nil && fi.Size() > 0 {
             break
         }
         select {

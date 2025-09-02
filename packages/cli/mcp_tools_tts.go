@@ -10,6 +10,7 @@ import (
 	ttsDomain "github.com/kajidog/aivis-cloud-cli/client/tts/domain"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/viper"
+	"strings"
 )
 
 // SynthesizeSpeechParams parameters for synthesize_speech tool
@@ -194,6 +195,15 @@ func handleSynthesizeSpeech(ctx context.Context, req *mcp.CallToolRequest, args 
 	
 	// Get history directory from config or use default
 	historyDir := viper.GetString("history_store_path")
+	// Expand ~ and env vars for robustness
+	if historyDir != "" {
+		if strings.HasPrefix(historyDir, "~") {
+			if home, err := os.UserHomeDir(); err == nil {
+				historyDir = filepath.Join(home, strings.TrimPrefix(historyDir, "~"))
+			}
+		}
+		historyDir = os.ExpandEnv(historyDir)
+	}
 	if historyDir == "" {
 		homeDir, _ := os.UserHomeDir()
 		historyDir = filepath.Join(homeDir, ".aivis-cli", "history", "audio")
@@ -380,6 +390,15 @@ func handlePlayText(ctx context.Context, req *mcp.CallToolRequest, args PlayText
 	
 	// Get history directory from config or use default
 	historyDir := viper.GetString("history_store_path")
+	// Expand ~ and env vars for robustness
+	if historyDir != "" {
+		if strings.HasPrefix(historyDir, "~") {
+			if home, err := os.UserHomeDir(); err == nil {
+				historyDir = filepath.Join(home, strings.TrimPrefix(historyDir, "~"))
+			}
+		}
+		historyDir = os.ExpandEnv(historyDir)
+	}
 	if historyDir == "" {
 		homeDir, _ := os.UserHomeDir()
 		historyDir = filepath.Join(homeDir, ".aivis-cli", "history", "audio")
